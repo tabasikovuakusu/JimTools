@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}JimTools — Home{% endblock %}
+{% block content %}
+<h1>JimTools</h1>
+<p class="subtitle">Private, offline PDF workstation. All files stay on this machine — no cloud, no limits, no ads.</p>
+
+<div class="section-title">Workflow tools</div>
+<div class="tools-grid">
+  <a class="tool-card gsl" href="/tool/compress">
+    <div class="icon">📉</div>
+    <div class="title">Smart Compress</div>
+    <div class="desc">Target-size compression for Canada (5MB), NZ (10MB), AU, UK, or custom</div>
+  </a>
+  <a class="tool-card gsl" href="/tool/auto-split">
+    <div class="icon">✂️</div>
+    <div class="title">Auto-Split to Fit</div>
+    <div class="desc">Break a large PDF into parts that each fit a portal limit</div>
+  </a>
+  <a class="tool-card gsl" href="/tool/bulk-rename">
+    <div class="icon">📝</div>
+    <div class="title">Bulk Renamer</div>
+    <div class="desc">Rename a batch of student docs with consistent naming</div>
+  </a>
+  <a class="tool-card gsl" href="/tool/stamp">
+    <div class="icon">🏷️</div>
+    <div class="title">Document Stamper</div>
+    <div class="desc">Apply COPY / ORIGINAL / SUBMITTED / VERIFIED / DRAFT stamps</div>
+  </a>
+  <a class="tool-card gsl" href="/tool/form-fill">
+    <div class="icon">✍️</div>
+    <div class="title">Fill PDF Form</div>
+    <div class="desc">Fill INZ forms, university forms — click fields on the page and type</div>
+  </a>
+  <a class="tool-card gsl" href="/tool/sign-pdf">
+    <div class="icon">🔏</div>
+    <div class="title">Sign PDF</div>
+    <div class="desc">Draw or upload a signature, then drag and place it on any page</div>
+  </a>
+  <a class="tool-card gsl" href="/tool/organize">
+    <div class="icon">🗂️</div>
+    <div class="title">Organize Pages</div>
+    <div class="desc">See all pages, drag to reorder, delete pages, extract — visual editor</div>
+  </a>
+  <a class="tool-card gsl" href="/tool/inspect">
+    <div class="icon">🔍</div>
+    <div class="title">File Inspector</div>
+    <div class="desc">See size, pages, fonts, metadata, encryption status</div>
+  </a>
+</div>
+
+<div class="section-title">PDF essentials</div>
+<div class="tools-grid">
+  <a class="tool-card" href="/tool/merge">
+    <div class="icon">🔗</div>
+    <div class="title">Merge PDFs</div>
+    <div class="desc">Combine multiple PDFs into one</div>
+  </a>
+  <a class="tool-card" href="/tool/split">
+    <div class="icon">🪓</div>
+    <div class="title">Split PDF</div>
+    <div class="desc">By page ranges or every N pages</div>
+  </a>
+  <a class="tool-card" href="/tool/rotate">
+    <div class="icon">🔄</div>
+    <div class="title">Rotate</div>
+    <div class="desc">Rotate pages 90°, 180°, or 270°</div>
+  </a>
+  <a class="tool-card" href="/tool/page-numbers">
+    <div class="icon">#️⃣</div>
+    <div class="title">Page Numbers</div>
+    <div class="desc">Add numbering to every page</div>
+  </a>
+  <a class="tool-card" href="/tool/watermark">
+    <div class="icon">💧</div>
+    <div class="title">Watermark</div>
+    <div class="desc">Add custom text watermark</div>
+  </a>
+  <a class="tool-card" href="/tool/protect">
+    <div class="icon">🔒</div>
+    <div class="title">Protect</div>
+    <div class="desc">Add a password to a PDF</div>
+  </a>
+  <a class="tool-card" href="/tool/unlock">
+    <div class="icon">🔓</div>
+    <div class="title">Unlock</div>
+    <div class="desc">Remove a password (you must know it)</div>
+  </a>
+  <a class="tool-card" href="/tool/pdf-to-images">
+    <div class="icon">🖼️</div>
+    <div class="title">PDF → Images</div>
+    <div class="desc">Convert each page to JPG or PNG</div>
+  </a>
+  <a class="tool-card" href="/tool/images-to-pdf">
+    <div class="icon">📄</div>
+    <div class="title">Images → PDF</div>
+    <div class="desc">Combine images into one PDF</div>
+  </a>
+</div>
+
+<div class="section-title">Convert</div>
+<div class="tools-grid">
+  <a class="tool-card" href="/tool/pdf-to-word">
+    <div class="icon">📝</div>
+    <div class="title">PDF → Word</div>
+    <div class="desc">Convert PDF to an editable .docx document</div>
+  </a>
+  <a class="tool-card" href="/tool/word-to-pdf">
+    <div class="icon">📄</div>
+    <div class="title">Word → PDF</div>
+    <div class="desc">Convert Word documents to PDF</div>
+  </a>
+  <a class="tool-card" href="/tool/pdf-to-excel">
+    <div class="icon">📊</div>
+    <div class="title">PDF → Excel</div>
+    <div class="desc">Extract tables from a PDF into a spreadsheet</div>
+  </a>
+  <a class="tool-card" href="/tool/excel-to-pdf">
+    <div class="icon">📗</div>
+    <div class="title">Excel → PDF</div>
+    <div class="desc">Convert spreadsheets to PDF</div>
+  </a>
+  <a class="tool-card" href="/tool/ocr-pdf">
+    <div class="icon">🔠</div>
+    <div class="title">OCR PDF</div>
+    <div class="desc">Make scanned PDFs searchable &amp; selectable</div>
+  </a>
+</div>
+
+<div class="section-title">Coming later</div>
+<div class="tools-grid">
+  <div class="tool-card" style="opacity: 0.5; cursor: not-allowed;">
+    <div class="icon">🤖</div>
+    <div class="title">AI Enhance</div>
+    <div class="desc">Denoise + deskew + smart compress (Phase 4)</div>
+  </div>
+  <div class="tool-card" style="opacity: 0.5; cursor: not-allowed;">
+    <div class="icon">🔏</div>
+    <div class="title">True Redaction</div>
+    <div class="desc">Permanent removal, not black boxes (Phase 4)</div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+{% block title %}Organize Pages — JimTools{% endblock %}
+{% block content %}
+<a href="/" class="back-link">← Back to all tools</a>
+<h1>Organize Pages</h1>
+<p class="subtitle">Upload one or more PDFs — drag to reorder, rotate, delete, then download as one combined PDF.</p>
+
+<div class="panel" id="uploadZone">
+  <div class="dropzone" id="dropzone" style="padding:24px 20px;">
+    <div class="dz-icon">📂</div>
+    <div><strong>Click or drop PDF files here</strong> — add multiple files</div>
+    <div class="dz-text">Every page appears below. Drop more files any time to add pages.</div>
+    <input type="file" id="fileInput" multiple accept=".pdf">
+  </div>
+</div>
+
+<div id="fileLoadingArea"></div>
+
+<div id="organizeArea" style="display:none;">
+  <!-- Toolbar -->
+  <div class="org-toolbar">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <span id="totalLabel" style="font-weight:600;white-space:nowrap;"></span>
+      <!-- Thumbnail size slider -->
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:12px;color:var(--text-dim);">🔍</span>
+        <input type="range" id="sizeSlider" min="100" max="260" value="160"
+               style="width:110px;" oninput="resizeCards(this.value)">
+        <span style="font-size:12px;color:var(--text-dim);">🔎</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" id="undoBtn" onclick="undoLast()"       style="padding:7px 13px;font-size:13px;" disabled>↩ Undo</button>
+      <button class="btn btn-secondary"              onclick="selectAll()"      style="padding:7px 13px;font-size:13px;">Select all</button>
+      <button class="btn btn-secondary"              onclick="deleteSelected()" style="padding:7px 13px;font-size:13px;color:var(--error);">Delete selected</button>
+      <button class="btn btn-secondary"              onclick="restoreAll()"     style="padding:7px 13px;font-size:13px;">Restore all</button>
+      <button class="btn"              id="applyBtn" onclick="applyOrganize()">Apply &amp; Download</button>
+    </div>
+  </div>
+
+  <div id="gridWrap">
+    <div id="pageGrid" class="org-grid"></div>
+    <!-- Drop insertion line — moves between cards to show insert position -->
+    <div id="dropLine" class="drop-line" style="display:none;"></div>
+  </div>
+
+  <div id="applyStatus" style="margin-top:14px;color:var(--text-dim);font-size:13px;"></div>
+  <div id="resultArea"  style="margin-top:16px;"></div>
+</div>
+
+<style>
+/* ── Layout ──────────────────────────────────────────────────── */
+.org-toolbar {
+  display:flex; justify-content:space-between; align-items:center;
+  flex-wrap:wrap; gap:12px; margin-bottom:16px;
+  padding:12px 16px; background:var(--surface); border:1px solid var(--border); border-radius:10px;
+}
+#gridWrap { position:relative; }
+.org-grid  { display:flex; flex-wrap:wrap; gap:12px; padding:4px; align-items:flex-start; }
+
+/* ── Drop insertion line ──────────────────────────────────────── */
+.drop-line {
+  position:absolute; width:3px; border-radius:3px;
+  background:#4a9eff; box-shadow:0 0 8px rgba(74,158,255,.6);
+  pointer-events:none; z-index:100;
+  transition:left .07s, top .07s;
+}
+
+/* ── Card ────────────────────────────────────────────────────── */
+.org-thumb {
+  background:var(--surface); border:2px solid var(--border);
+  border-radius:8px; user-select:none;
+  display:flex; flex-direction:column;
+  transition:border-color .15s, box-shadow .15s;
+  /* width set dynamically by sizeSlider */
+}
+.org-thumb.selected  { border-color:#c9a44a; box-shadow:0 0 0 2px rgba(201,164,74,.3); }
+.org-thumb.dragging  { opacity:.2; }
+
+/* ── Image area ───────────────────────────────────────────────── */
+.org-img-wrap {
+  width:100%; overflow:hidden; border-radius:6px 6px 0 0;
+  background:#e8e8e8; display:flex; align-items:center; justify-content:center;
+  cursor:grab; flex-shrink:0; position:relative;
+  aspect-ratio:3/4;   /* consistent height regardless of page content */
+}
+.org-img-wrap:active { cursor:grabbing; }
+.org-img-wrap img {
+  width:100%; height:100%; object-fit:contain;
+  pointer-events:none; transform-origin:center;
+  transition:transform .2s;
+}
+
+/* Select badge — top left, shows on hover or when selected */
+.org-sel {
+  position:absolute; top:5px; left:5px; z-index:4;
+  width:20px; height:20px; border-radius:5px;
+  background:rgba(0,0,0,.45); border:2px solid rgba(255,255,255,.5);
+  color:#fff; font-size:11px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; opacity:0; transition:opacity .12s;
+}
+.org-thumb:hover .org-sel,
+.org-thumb.selected .org-sel { opacity:1; }
+.org-thumb.selected .org-sel { background:#c9a44a; border-color:#c9a44a; color:#111; }
+
+/* Delete — top right, shows on hover */
+.org-del {
+  position:absolute; top:5px; right:5px; z-index:4;
+  width:22px; height:22px; border-radius:50%;
+  background:rgba(180,30,30,.8); color:#fff; border:none;
+  font-size:13px; font-weight:700; line-height:22px; text-align:center;
+  cursor:pointer; opacity:0; transition:opacity .12s;
+}
+.org-thumb:hover .org-del { opacity:1; }
+
+/* ── Controls bar — ALWAYS VISIBLE at bottom ─────────────────── */
+.org-controls {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:5px 6px; border-top:1px solid var(--border);
+  background:var(--surface-2); border-radius:0 0 0 0; flex-shrink:0;
+}
+.org-rot {
+  background:transparent; border:1px solid var(--border);
+  color:var(--text); border-radius:5px; font-size:15px;
+  width:28px; height:26px; cursor:pointer; display:flex;
+  align-items:center; justify-content:center;
+  transition:background .1s, border-color .1s; flex-shrink:0;
+}
+.org-rot:hover { background:var(--surface); border-color:var(--text-dim); }
+
+.org-pg-num {
+  font-size:14px; font-weight:700; color:var(--text);
+  text-align:center; flex:1; line-height:1;
+}
+.org-pg-deg { font-size:9px; color:#c9a44a; font-weight:600; }
+
+/* ── Source label ─────────────────────────────────────────────── */
+.org-src {
+  font-size:10px; color:var(--text-dim); text-align:center;
+  padding:3px 5px 4px; white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; border-radius:0 0 6px 6px;
+}
+
+/* Loading row */
+.file-loading-row {
+  background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  padding:12px 16px; margin-bottom:8px;
+  display:flex; align-items:center; gap:10px; font-size:14px; color:var(--text-dim);
+}
+.mini-spinner { width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--text); border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0; }
+</style>
+
+<script>
+let pages    = [];
+let allPages = [];
+let history  = [];
+let cardWidth= 160;
+let dragSrc  = null;  // index being dragged
+let dropIdx  = null;  // where it will be inserted
+let lastShift= null;
+
+// ── FILE LOADING ──────────────────────────────────────────────────────────────
+const dz=document.getElementById("dropzone"), fi=document.getElementById("fileInput");
+dz.onclick=()=>fi.click();
+dz.ondragover=e=>{e.preventDefault();dz.classList.add("dragover");};
+dz.ondragleave=()=>dz.classList.remove("dragover");
+dz.ondrop=e=>{e.preventDefault();dz.classList.remove("dragover");addFiles([...e.dataTransfer.files]);};
+fi.onchange=()=>{addFiles([...fi.files]);fi.value="";};
+function addFiles(files){files.filter(f=>f.name.toLowerCase().endsWith(".pdf")).forEach(loadFile);}
+
+async function loadFile(file){
+  const row=mkRow(file.name);
+  const fd=new FormData();fd.append("file",file);
+  try{
+    const r=await fetch("/api/thumbnails",{method:"POST",body:fd});
+    const d=await r.json();
+    if(d.error){row.innerHTML=`<span style="color:var(--error);">${esc(d.error)}</span>`;return;}
+    d.thumbnails.forEach(th=>{
+      const p={fileKey:d.file_key,fileName:file.name,page:th.page,thumbData:th.data,rotation:0};
+      pages.push(p);allPages.push({...p});
+    });
+    row.remove();renderGrid();
+  }catch(e){row.innerHTML=`<span style="color:var(--error);">Error: ${esc(e.message)}</span>`;}
+}
+function mkRow(name){
+  const r=document.createElement("div");r.className="file-loading-row";
+  r.innerHTML=`<div class="mini-spinner"></div><span>Loading <strong>${esc(name)}</strong>…</span>`;
+  document.getElementById("fileLoadingArea").appendChild(r);return r;
+}
+
+// ── SIZE SLIDER ───────────────────────────────────────────────────────────────
+function resizeCards(v){
+  cardWidth=parseInt(v);
+  document.querySelectorAll(".org-thumb").forEach(el=>el.style.width=cardWidth+"px");
+}
+
+// ── HISTORY ───────────────────────────────────────────────────────────────────
+function snapshot(){history.push(pages.map(p=>({...p})));document.getElementById("undoBtn").disabled=false;}
+function undoLast(){
+  if(!history.length)return;
+  pages=history.pop();
+  if(!history.length)document.getElementById("undoBtn").disabled=true;
+  renderGrid();
+}
+
+// ── BULK ──────────────────────────────────────────────────────────────────────
+function selectAll(){document.querySelectorAll(".org-thumb").forEach(el=>el.classList.add("selected"));}
+function deleteSelected(){
+  const sel=new Set([...document.querySelectorAll(".org-thumb.selected")].map(el=>+el.dataset.pos));
+  if(!sel.size)return;
+  if(pages.length-sel.size<1){alert("Cannot delete all pages.");return;}
+  snapshot();pages=pages.filter((_,i)=>!sel.has(i));renderGrid();
+}
+function restoreAll(){snapshot();pages=allPages.map(p=>({...p}));renderGrid();}
+
+// ── PER-CARD ACTIONS ──────────────────────────────────────────────────────────
+function rotatePage(pos,deg,e){e&&e.stopPropagation();snapshot();pages[pos].rotation=(pages[pos].rotation+deg+360)%360;renderGrid();}
+function deletePage(pos,e){e&&e.stopPropagation();if(pages.length<=1){alert("Cannot delete the last page.");return;}snapshot();pages.splice(pos,1);renderGrid();}
+function handleSelect(card,pos,isShift){
+  if(isShift&&lastShift!==null){
+    const lo=Math.min(lastShift,pos),hi=Math.max(lastShift,pos);
+    document.querySelectorAll(".org-thumb").forEach(t=>{if(+t.dataset.pos>=lo&&+t.dataset.pos<=hi)t.classList.add("selected");});
+  }else{card.classList.toggle("selected");lastShift=pos;}
+}
+
+// ── DRAG — insertion-line style ───────────────────────────────────────────────
+function getDropLine(){return document.getElementById("dropLine");}
+
+function showDropLine(insertBefore){
+  // insertBefore = index we'd insert before (0 = start, pages.length = end)
+  const grid=document.getElementById("pageGrid");
+  const cards=[...grid.querySelectorAll(".org-thumb")];
+  const line=getDropLine();
+  const gridRect=grid.getBoundingClientRect();
+  const scrollY=window.scrollY;
+
+  if(cards.length===0){line.style.display="none";return;}
+
+  let refCard, side; // which card's edge to hug
+  if(insertBefore<=0){
+    refCard=cards[0]; side="left";
+  } else if(insertBefore>=cards.length){
+    refCard=cards[cards.length-1]; side="right";
+  } else {
+    refCard=cards[insertBefore]; side="left";
+  }
+
+  const r=refCard.getBoundingClientRect();
+  const wrapR=document.getElementById("gridWrap").getBoundingClientRect();
+  const x=(side==="left"?r.left:r.right)-wrapR.left-1.5;
+  const y=r.top-wrapR.top;
+  const h=r.height;
+
+  line.style.display="block";
+  line.style.left=x+"px";
+  line.style.top=y+"px";
+  line.style.height=h+"px";
+}
+
+function hideDropLine(){getDropLine().style.display="none";}
+
+function cardInsertIndex(card, clientX){
+  // Returns the index we'd insert BEFORE based on cursor X within the card
+  const r=card.getBoundingClientRect();
+  const pos=+card.dataset.pos;
+  return clientX < r.left+r.width/2 ? pos : pos+1;
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function renderGrid(){
+  const grid=document.getElementById("pageGrid");
+  grid.innerHTML="";
+  hideDropLine();
+  document.getElementById("organizeArea").style.display=pages.length?"block":"none";
+  document.getElementById("totalLabel").textContent=pages.length+" page"+(pages.length!==1?"s":"");
+  document.getElementById("applyStatus").textContent="";
+
+  pages.forEach((pg,pos)=>{
+    const card=document.createElement("div");
+    card.className="org-thumb";
+    card.style.width=cardWidth+"px";
+    card.draggable=true;
+    card.dataset.pos=pos;
+
+    const short=pg.fileName.replace(/\.pdf$/i,"").slice(0,18);
+    const deg=pg.rotation;
+    card.innerHTML=`
+      <div class="org-img-wrap">
+        <div class="org-sel">✓</div>
+        <img src="data:image/jpeg;base64,${pg.thumbData}"
+             style="transform:rotate(${deg}deg);" alt="">
+        <button class="org-del">✕</button>
+      </div>
+      <div class="org-controls">
+        <button class="org-rot" title="Rotate left">↺</button>
+        <div style="text-align:center;flex:1;">
+          <div class="org-pg-num">${pg.page}</div>
+          ${deg?`<div class="org-pg-deg">${deg}°</div>`:""}
+        </div>
+        <button class="org-rot" title="Rotate right">↻</button>
+      </div>
+      <div class="org-src" title="${esc(pg.fileName)}">${esc(short)}</div>
+    `;
+
+    const [rotL,rotR]=card.querySelectorAll(".org-rot");
+    rotL.onclick=e=>rotatePage(pos,-90,e);
+    rotR.onclick=e=>rotatePage(pos, 90,e);
+    card.querySelector(".org-del").onclick=e=>deletePage(pos,e);
+    card.querySelector(".org-sel").onclick=e=>{e.stopPropagation();handleSelect(card,pos,e.shiftKey);};
+    card.onclick=e=>{if(e.target.closest(".org-rot,.org-del,.org-sel"))return;handleSelect(card,pos,e.shiftKey);};
+
+    // ── DRAG EVENTS ──────────────────────────────────────────────
+    card.addEventListener("dragstart",ev=>{
+      dragSrc=pos;
+      ev.dataTransfer.effectAllowed="move";
+      ev.dataTransfer.setData("text/plain",pos); // required for Firefox
+      setTimeout(()=>card.classList.add("dragging"),0);
+    });
+    card.addEventListener("dragend",()=>{
+      card.classList.remove("dragging");
+      hideDropLine();dragSrc=null;dropIdx=null;
+    });
+    card.addEventListener("dragover",ev=>{
+      ev.preventDefault();ev.dataTransfer.dropEffect="move";
+      if(dragSrc===null)return;
+      dropIdx=cardInsertIndex(card,ev.clientX);
+      showDropLine(dropIdx);
+    });
+    card.addEventListener("drop",ev=>{
+      ev.preventDefault();hideDropLine();
+      if(dragSrc===null||dropIdx===null)return;
+      const src=dragSrc, ins=dropIdx;
+      dragSrc=null;dropIdx=null;
+      if(src===ins||src===ins-1)return; // no-op
+      snapshot();
+      const moved=pages.splice(src,1)[0];
+      const finalIns=src<ins?ins-1:ins;
+      pages.splice(finalIns,0,moved);
+      renderGrid();
+    });
+
+    grid.appendChild(card);
+  });
+  lastShift=null;
+}
+
+// Auto-scroll during drag — fires on every dragover
+const SCROLL_EDGE  = 90;   // px from viewport edge that triggers scroll
+const SCROLL_MAX   = 14;   // max px/tick scroll speed
+document.addEventListener("dragover", ev => {
+  if (dragSrc === null) return;
+
+  // Auto-scroll
+  const y = ev.clientY, vh = window.innerHeight;
+  if (y < SCROLL_EDGE) {
+    // Near top — scroll up, faster the closer to edge
+    window.scrollBy(0, -SCROLL_MAX * (1 - y / SCROLL_EDGE));
+  } else if (y > vh - SCROLL_EDGE) {
+    // Near bottom — scroll down
+    window.scrollBy(0, SCROLL_MAX * (1 - (vh - y) / SCROLL_EDGE));
+  }
+
+  // Insertion point at far right edge of grid
+  const grid = document.getElementById("pageGrid");
+  const gridRect = grid.getBoundingClientRect();
+  if (ev.clientX > gridRect.right - 8) { dropIdx = pages.length; showDropLine(dropIdx); }
+});
+
+// ── APPLY ─────────────────────────────────────────────────────────────────────
+async function applyOrganize(){
+  if(!pages.length){alert("No pages to save.");return;}
+  const btn=document.getElementById("applyBtn");
+  btn.disabled=true;
+  document.getElementById("applyStatus").textContent="Building PDF…";
+  const fd=new FormData();
+  fd.append("page_list",JSON.stringify(pages.map(p=>({file_key:p.fileKey,page:p.page,rotation:p.rotation}))));
+  try{
+    const r=await fetch("/tool/merge-visual",{method:"POST",body:fd});
+    const d=await r.json();
+    if(d.error){document.getElementById("applyStatus").textContent="Error: "+d.error;btn.disabled=false;return;}
+    document.getElementById("applyStatus").textContent="";
+    const passKey = d.pass_key || "";
+    document.getElementById("resultArea").innerHTML=`
+      <div class="result-card">
+        <h3>${d.total_pages} page${d.total_pages!==1?"s":""} · ${d.size_mb} MB</h3>
+        <a class="download-link" href="${d.download_url}">Download organized.pdf</a>
+        <div style="margin-top:10px;"><a href="/tool/organize" style="color:var(--text-dim);font-size:13px;">Organize another set</a></div>
+      </div>
+      <div class="continue-tools">
+        <div class="continue-title">Continue to…</div>
+        <div class="continue-grid">
+          ${passKey ? `<div style="font-size:12px;color:#22cc55;margin-bottom:8px;padding:6px 8px;background:#111a14;border-radius:6px;border:1px solid #22cc55;">✓ Your organized file will be pre-loaded in the next tool</div>` : ""}
+          <a href="/tool/compress${passKey?'?from='+passKey:''}"     class="continue-card"><span class="continue-icon">📉</span><span class="continue-label">Smart Compress</span><span class="continue-arrow">›</span></a>
+          <a href="/tool/split${passKey?'?from='+passKey:''}"        class="continue-card"><span class="continue-icon">🪓</span><span class="continue-label">Split PDF</span><span class="continue-arrow">›</span></a>
+          <a href="/tool/watermark${passKey?'?from='+passKey:''}"    class="continue-card"><span class="continue-icon">💧</span><span class="continue-label">Watermark</span><span class="continue-arrow">›</span></a>
+          <a href="/tool/stamp${passKey?'?from='+passKey:''}"        class="continue-card"><span class="continue-icon">🏷</span><span class="continue-label">Stamp</span><span class="continue-arrow">›</span></a>
+          <a href="/tool/page-numbers${passKey?'?from='+passKey:''}" class="continue-card"><span class="continue-icon">#️⃣</span><span class="continue-label">Page Numbers</span><span class="continue-arrow">›</span></a>
+          <a href="/tool/protect${passKey?'?from='+passKey:''}"      class="continue-card"><span class="continue-icon">🔒</span><span class="continue-label">Protect PDF</span><span class="continue-arrow">›</span></a>
+        </div>
+      </div>`;
+    document.getElementById("resultArea").scrollIntoView({behavior:"smooth",block:"nearest"});
+  }catch(e){document.getElementById("applyStatus").textContent="Error: "+e.message;}
+  finally{btn.disabled=false;}
+}
+
+function esc(s){const d=document.createElement("div");d.appendChild(document.createTextNode(s));return d.innerHTML;}
+</script>
+{% endblock %}

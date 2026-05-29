@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% block title %}Split PDF — JimTools{% endblock %}
+{% block content %}
+<a href="/" class="back-link">← Back to all tools</a>
+<h1>Split PDF</h1>
+<p class="subtitle">Split by page ranges, every N pages, or use <strong>Visual Mode</strong> to click the exact pages you want.</p>
+
+<div class="panel" id="mainPanel">
+  <div class="form-row">
+    <label>Mode</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="preset-btn" id="modeRange" onclick="setMode('ranges')" style="flex:1;min-width:120px;">📝 By ranges</button>
+      <button class="preset-btn" id="modeEvery" onclick="setMode('every_n')" style="flex:1;min-width:120px;">🔢 Every N pages</button>
+      <button class="preset-btn" id="modeVisual" onclick="setMode('visual')" style="flex:1;min-width:120px;">🖼️ Visual pick</button>
+    </div>
+  </div>
+
+  <div id="optRanges" class="form-row">
+    <label>Page ranges</label>
+    <input type="text" id="ranges" placeholder="e.g. 1-5, 6-10, 11-20">
+    <div class="hint">Each range → a separate output file. Example: 1-3, 4-8, 9-15</div>
+  </div>
+  <div id="optEvery" class="form-row" style="display:none;">
+    <label>Pages per part</label>
+    <input type="number" id="every_n" value="10" min="1">
+  </div>
+  <div id="optVisual" class="form-row" style="display:none;">
+    <div style="color:var(--text-dim);font-size:13px;padding:8px 0;">
+      Upload the file, then click pages in the preview to select them. Selected pages will be extracted into one output file.
+      To create <em>multiple splits</em>, use the range mode instead.
+    </div>
+  </div>
+
+  <div class="form-row">
+    <label>File</label>
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">📤</div>
+      <div><strong>Click or drop a PDF here</strong></div>
+      <input type="file" id="fileInput" accept=".pdf">
+    </div>
+    <div class="file-list" id="fileList"></div>
+  </div>
+  <button class="btn" id="submitBtn" disabled>Split</button>
+</div>
+
+<!-- Visual mode preview panel -->
+<div id="visualPanel" style="display:none;">
+  <div id="visualLoading" class="panel processing" style="display:none;">
+    <div class="spinner"></div><div>Loading page previews…</div>
+  </div>
+  <div id="visualGrid" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div>
+        <span id="selCount" style="font-weight:600;">0 pages selected</span>
+        <span style="color:var(--text-dim);font-size:13px;margin-left:8px;">Click pages to toggle selection</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="selectAllPages()" style="padding:8px 14px;font-size:13px;">Select all</button>
+        <button class="btn btn-secondary" onclick="clearPageSel()" style="padding:8px 14px;font-size:13px;">Clear</button>
+      </div>
+    </div>
+    <div id="thumbGrid" class="page-grid-split"></div>
+    <div style="margin-top:20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <button class="btn" id="extractBtn" disabled>Extract selected pages</button>
+      <span id="extractStatus" style="color:var(--text-dim);font-size:13px;"></span>
+    </div>
+  </div>
+</div>
+
+<div id="processing" style="display: none;" class="panel processing">
+  <div class="spinner"></div><div>Splitting…</div>
+</div>
+<div id="results"></div>
+
+<style>
+.page-grid-split { display:flex; flex-wrap:wrap; gap:8px; }
+.split-thumb {
+  width: 110px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.1s;
+  user-select: none;
+}
+.split-thumb img { width:100%; border-radius:6px 6px 0 0; display:block; pointer-events:none; }
+.split-thumb .pg-num { font-size:11px; text-align:center; padding:4px 0; color:var(--text-dim); }
+.split-thumb.sel { border-color: #c9a44a; background: #1e1a0e; }
+.split-thumb.sel .pg-num { color: #c9a44a; font-weight:600; }
+</style>
+
+<script>
+let selectedFile = null;
+let currentMode = "ranges";
+let visualFileKey = null;
+let visualThumbs = [];
+let selectedPages = new Set(); // 1-based page numbers
+
+const dz = document.getElementById("dropzone");
+const fi = document.getElementById("fileInput");
+const fl = document.getElementById("fileList");
+const sb = document.getElementById("submitBtn");
+let usingPreload = false;
+document.addEventListener("preloadReady", (e) => {
+  usingPreload = true;
+  sb.disabled = false;
+  // Show pass-key file in the file list
+  document.getElementById("fileList").innerHTML = `<div class="file-item"><span style="color:#22cc55;">✓ ${e.detail.original_name}</span><span style="color:var(--text-dim);">${e.detail.size_mb} MB — from previous step</span></div>`;
+  // Store a sentinel so submit handler knows to use pass_key
+  selectedFile = null;
+});
+document.addEventListener("preloadCleared", () => {
+  usingPreload = false;
+  sb.disabled = !selectedFile;
+  document.getElementById("fileList").innerHTML = "";
+});
+
+dz.onclick = () => fi.click();
+dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("dragover"); };
+dz.ondragleave = () => dz.classList.remove("dragover");
+dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove("dragover"); setFile(e.dataTransfer.files[0]); };
+fi.onchange = () => { setFile(fi.files[0]); fi.value = ""; };
+
+function setFile(f) {
+  if (!f) return;
+  selectedFile = f;
+  fl.innerHTML = `<div class="file-item"><span>${f.name}</span><span>${(f.size/1024/1024).toFixed(2)} MB</span></div>`;
+  sb.disabled = false;
+  if (currentMode === "visual") loadVisual();
+}
+
+function setMode(m) {
+  currentMode = m;
+  ["ranges","every_n","visual"].forEach(k => {
+    document.getElementById("opt" + k.charAt(0).toUpperCase() + k.slice(1).replace("_n","N")) && null;
+  });
+  document.getElementById("optRanges").style.display = m === "ranges" ? "block" : "none";
+  document.getElementById("optEvery").style.display = m === "every_n" ? "block" : "none";
+  document.getElementById("optVisual").style.display = m === "visual" ? "block" : "none";
+  ["modeRange","modeEvery","modeVisual"].forEach(id => document.getElementById(id).classList.remove("active"));
+  const map = { ranges:"modeRange", every_n:"modeEvery", visual:"modeVisual" };
+  document.getElementById(map[m]).classList.add("active");
+  // Show/hide submit button
+  sb.style.display = m === "visual" ? "none" : "block";
+  document.getElementById("visualPanel").style.display = m === "visual" ? "block" : "none";
+  if (m === "visual" && selectedFile) loadVisual();
+}
+
+async function loadVisual() {
+  document.getElementById("visualLoading").style.display = "block";
+  document.getElementById("visualGrid").style.display = "none";
+  const fd = new FormData();
+  fd.append("file", selectedFile);
+  try {
+    const r = await fetch("/api/thumbnails", { method: "POST", body: fd });
+    const d = await r.json();
+    if (d.error) { alert("Error: " + d.error); return; }
+    visualFileKey = d.file_key;
+    visualThumbs = d.thumbnails;
+    selectedPages = new Set();
+    renderThumbGrid();
+    document.getElementById("visualLoading").style.display = "none";
+    document.getElementById("visualGrid").style.display = "block";
+  } catch(e) {
+    alert("Failed to load preview: " + e.message);
+    document.getElementById("visualLoading").style.display = "none";
+  }
+}
+
+function renderThumbGrid() {
+  const grid = document.getElementById("thumbGrid");
+  grid.innerHTML = "";
+  visualThumbs.forEach(th => {
+    const el = document.createElement("div");
+    el.className = "split-thumb" + (selectedPages.has(th.page) ? " sel" : "");
+    el.innerHTML = `<img src="data:image/jpeg;base64,${th.data}"><div class="pg-num">Page ${th.page}</div>`;
+    el.onclick = () => {
+      if (selectedPages.has(th.page)) selectedPages.delete(th.page);
+      else selectedPages.add(th.page);
+      el.classList.toggle("sel");
+      updateSelCount();
+    };
+    grid.appendChild(el);
+  });
+  updateSelCount();
+}
+
+function updateSelCount() {
+  const n = selectedPages.size;
+  document.getElementById("selCount").textContent = n + " page" + (n!==1?"s":"") + " selected";
+  document.getElementById("extractBtn").disabled = n === 0;
+}
+
+function selectAllPages() { visualThumbs.forEach(t => selectedPages.add(t.page)); renderThumbGrid(); }
+function clearPageSel() { selectedPages.clear(); renderThumbGrid(); }
+
+document.getElementById("extractBtn").onclick = async () => {
+  if (!selectedPages.size) return;
+  const sorted = [...selectedPages].sort((a,b) => a-b);
+  // Build ranges from selected pages for the existing split endpoint
+  const ranges = [];
+  let start = sorted[0], prev = sorted[0];
+  for (let i = 1; i <= sorted.length; i++) {
+    if (i < sorted.length && sorted[i] === prev + 1) { prev = sorted[i]; continue; }
+    ranges.push(`${start}-${prev}`);
+    if (i < sorted.length) { start = sorted[i]; prev = sorted[i]; }
+  }
+  document.getElementById("extractBtn").disabled = true;
+  document.getElementById("extractStatus").textContent = "Extracting…";
+  const fd = new FormData();
+  fd.append("file", selectedFile);
+  fd.append("mode", "ranges");
+  fd.append("ranges", ranges.join(","));
+  try {
+    const r = await fetch("/tool/split", { method: "POST", body: fd });
+    const d = await r.json();
+    let html;
+    if (d.error) html = `<div class="result-card error"><h3>Error</h3><div>${d.error}</div></div>`;
+    else html = `<div class="result-card">
+      <h3>Extracted ${sorted.length} page${sorted.length!==1?"s":""} into ${d.parts.length} part${d.parts.length!==1?"s":""}</h3>
+      ${d.parts.map(p => `<div class="stats"><span><strong>${p.name}</strong> — ${p.size_mb} MB <a class="download-link" style="margin-left:12px;" href="${p.download_url}">Download</a></span>
+      <div class="continue-tools">
+        <div class="continue-title">Continue to…</div>
+        <div class="continue-grid"><a href="/tool/compress" class="continue-card"><span class="continue-icon">📉</span><span class="continue-label">Smart Compress</span><span class="continue-arrow">›</span></a><a href="/tool/organize" class="continue-card"><span class="continue-icon">🗂️</span><span class="continue-label">Organize Pages</span><span class="continue-arrow">›</span></a><a href="/tool/merge" class="continue-card"><span class="continue-icon">🔗</span><span class="continue-label">Merge PDFs</span><span class="continue-arrow">›</span></a><a href="/tool/stamp" class="continue-card"><span class="continue-icon">🏷</span><span class="continue-label">Stamp</span><span class="continue-arrow">›</span></a><a href="/tool/protect" class="continue-card"><span class="continue-icon">🔒</span><span class="continue-label">Protect PDF</span><span class="continue-arrow">›</span></a><a href="/tool/sign-pdf" class="continue-card"><span class="continue-icon">✍️</span><span class="continue-label">Sign PDF</span><span class="continue-arrow">›</span></a></div>
+      </div>
+      </div>`).join("")}
+    </div>`;
+    document.getElementById("results").innerHTML = html;
+    document.getElementById("extractStatus").textContent = "";
+  } catch(e) {
+    document.getElementById("extractStatus").textContent = "Error: " + e.message;
+  } finally {
+    document.getElementById("extractBtn").disabled = false;
+  }
+};
+
+// Standard range/every-N submit
+sb.onclick = async () => {
+  if (!selectedFile) return;
+  const fd = new FormData();
+  fd.append("file", selectedFile);
+  fd.append("mode", currentMode);
+  fd.append("ranges", document.getElementById("ranges").value);
+  fd.append("every_n", document.getElementById("every_n").value);
+  document.getElementById("processing").style.display = "block";
+  document.getElementById("results").innerHTML = "";
+  sb.disabled = true;
+  try {
+    const r = await fetch("/tool/split", { method: "POST", body: fd });
+    const d = await r.json();
+    let html;
+    if (d.error) html = `<div class="result-card error"><h3>Error</h3><div>${d.error}</div></div>`;
+    else html = `<div class="result-card"><h3>Split into ${d.parts.length} parts</h3>
+      ${d.parts.map(p => `<div class="stats"><span><strong>${p.name}</strong> — ${p.size_mb} MB <a class="download-link" style="margin-left:12px;" href="${p.download_url}">Download</a></span></div>`).join("")}
+    </div>`;
+    document.getElementById("results").innerHTML = html;
+  } catch(e) {
+    document.getElementById("results").innerHTML = `<div class="result-card error">${e.message}</div>`;
+  } finally {
+    document.getElementById("processing").style.display = "none";
+    sb.disabled = false;
+  }
+};
+
+// Default to visual mode
+setMode("visual");
+</script>
+{% endblock %}

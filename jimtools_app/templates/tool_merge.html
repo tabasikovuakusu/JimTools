@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}Merge PDFs — JimTools{% endblock %}
+{% block content %}
+<a href="/" class="back-link">← Back to all tools</a>
+<h1>Merge PDFs</h1>
+<p class="subtitle">Upload PDFs — every page appears as a thumbnail. Drag individual pages to reorder, then merge.</p>
+
+<!-- Upload zone — always visible so more files can be added -->
+<div class="panel" id="uploadZone">
+  <div class="dropzone" id="dropzone" style="padding:28px 20px;">
+    <div class="dz-icon">📤</div>
+    <div><strong>Click or drop PDF files here</strong></div>
+    <div class="dz-text">Each file's pages will load as thumbnails below</div>
+    <input type="file" id="fileInput" multiple accept=".pdf">
+  </div>
+</div>
+
+<!-- Loading indicators per file (appended dynamically) -->
+<div id="fileLoadingArea"></div>
+
+<!-- The visual page grid -->
+<div id="gridArea" style="display:none;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+    <div>
+      <span id="totalPagesLabel" style="font-weight:600;"></span>
+      <span style="color:var(--text-dim);font-size:13px;margin-left:8px;">Drag pages to reorder · ✕ to remove a page · file labels shown below each page</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" onclick="resetAll()" style="padding:8px 14px;font-size:13px;">Clear all</button>
+      <button class="btn" id="mergeBtn">Merge</button>
+    </div>
+  </div>
+  <div id="pageGrid" class="merge-grid"></div>
+</div>
+
+<div id="processing" class="panel processing" style="display:none;margin-top:16px;">
+  <div class="spinner"></div><div>Merging…</div>
+</div>
+<div id="results" style="margin-top:16px;"></div>
+
+<style>
+.merge-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px;
+}
+.merge-thumb {
+  position: relative;
+  width: 115px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: grab;
+  user-select: none;
+  transition: border-color 0.15s, opacity 0.15s, transform 0.1s;
+}
+.merge-thumb:active { cursor: grabbing; }
+.merge-thumb img { width:100%; border-radius:6px 6px 0 0; display:block; pointer-events:none; }
+.merge-thumb .pg-num { font-size:11px; text-align:center; padding:3px 0 1px; color:var(--text-dim); }
+.merge-thumb .pg-file { font-size:10px; text-align:center; padding:0 4px 4px; color:var(--text-dim); opacity:0.6; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.merge-thumb .del-btn {
+  position:absolute; top:3px; right:3px;
+  width:18px; height:18px;
+  background:var(--error); color:#fff;
+  border:none; border-radius:50%;
+  font-size:11px; font-weight:700;
+  line-height:18px; text-align:center;
+  cursor:pointer; display:none;
+}
+.merge-thumb:hover .del-btn { display:block; }
+.merge-thumb.dragging { opacity:0.3; transform:scale(0.95); }
+.merge-thumb.drag-over { border-color:var(--text); border-style:dashed; }
+/* file group divider */
+.file-divider {
+  width:100%; font-size:12px; color:var(--text-dim);
+  padding:4px 0 2px;
+  border-top:1px solid var(--border);
+  margin-top:8px;
+}
+.file-loading-row {
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:16px 20px;
+  margin-bottom:12px;
+  display:flex; align-items:center; gap:12px;
+  font-size:14px; color:var(--text-dim);
+}
+.mini-spinner {
+  width:18px; height:18px;
+  border:2px solid var(--border); border-top-color:var(--text);
+  border-radius:50%; animation:spin 0.7s linear infinite; flex-shrink:0;
+}
+</style>
+
+<script>
+// Each item: { fileKey, fileName, page (1-based), thumbData }
+let currentPages = [];
+let dragSrc = null;
+let loadingCount = 0;  // files still loading
+
+const dz = document.getElementById("dropzone");
+const fi = document.getElementById("fileInput");
+dz.onclick = () => fi.click();
+dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("dragover"); };
+dz.ondragleave = () => dz.classList.remove("dragover");
+dz.ondrop = (e) => {
+  e.preventDefault(); dz.classList.remove("dragover");
+  addFiles([...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith(".pdf")));
+};
+fi.onchange = () => {
+  addFiles([...fi.files].filter(f => f.name.toLowerCase().endsWith(".pdf")));
+  fi.value = "";
+};
+
+function addFiles(files) {
+  files.forEach(f => loadFile(f));
+}
+
+async function loadFile(file) {
+  const loaderRow = document.createElement("div");
+  loaderRow.className = "file-loading-row";
+  loaderRow.innerHTML = `<div class="mini-spinner"></div><span>Loading <strong>${escHtml(file.name)}</strong>…</span>`;
+  document.getElementById("fileLoadingArea").appendChild(loaderRow);
+  loadingCount++;
+
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const r = await fetch("/api/thumbnails", { method: "POST", body: fd });
+    const d = await r.json();
+    if (d.error) { loaderRow.innerHTML = `<span style="color:var(--error);">Failed: ${escHtml(d.error)}</span>`; return; }
+
+    d.thumbnails.forEach(th => {
+      currentPages.push({
+        fileKey: d.file_key,
+        fileName: file.name,
+        page: th.page,
+        thumbData: th.data,
+      });
+    });
+    loaderRow.remove();
+    renderGrid();
+  } catch(e) {
+    loaderRow.innerHTML = `<span style="color:var(--error);">Error loading ${escHtml(file.name)}: ${e.message}</span>`;
+  } finally {
+    loadingCount--;
+  }
+}
+
+function renderGrid() {
+  const grid = document.getElementById("pageGrid");
+  grid.innerHTML = "";
+  document.getElementById("gridArea").style.display = currentPages.length ? "block" : "none";
+  document.getElementById("totalPagesLabel").textContent = currentPages.length + " page" + (currentPages.length !== 1 ? "s" : "");
+
+  currentPages.forEach((pg, pos) => {
+    const card = document.createElement("div");
+    card.className = "merge-thumb";
+    card.draggable = true;
+    card.dataset.pos = pos;
+    const shortName = pg.fileName.replace(/\.pdf$/i, "").slice(0, 16);
+    card.innerHTML = `
+      <img src="data:image/jpeg;base64,${pg.thumbData}" alt="p${pg.page}">
+      <div class="pg-num">Page ${pos + 1}</div>
+      <div class="pg-file" title="${escHtml(pg.fileName)}">${escHtml(shortName)} p${pg.page}</div>
+      <button class="del-btn" data-pos="${pos}" title="Remove page">✕</button>
+    `;
+    card.querySelector(".del-btn").onclick = (e) => {
+      e.stopPropagation();
+      currentPages.splice(pos, 1);
+      renderGrid();
+    };
+    card.addEventListener("dragstart", () => {
+      dragSrc = pos;
+      setTimeout(() => card.classList.add("dragging"), 0);
+    });
+    card.addEventListener("dragend", () => card.classList.remove("dragging"));
+    card.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      document.querySelectorAll(".merge-thumb").forEach(t => t.classList.remove("drag-over"));
+      card.classList.add("drag-over");
+    });
+    card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
+    card.addEventListener("drop", (e) => {
+      e.preventDefault();
+      card.classList.remove("drag-over");
+      const dest = parseInt(card.dataset.pos);
+      if (dragSrc === null || dragSrc === dest) return;
+      const moved = currentPages.splice(dragSrc, 1)[0];
+      // After removing dragSrc, indices > dragSrc shift down by 1
+      const insertAt = dragSrc < dest ? dest - 1 : dest;
+      currentPages.splice(insertAt, 0, moved);
+      dragSrc = null;
+      renderGrid();
+    });
+    grid.appendChild(card);
+  });
+}
+
+function resetAll() { currentPages = []; renderGrid(); }
+
+function escHtml(s) { const d = document.createElement("div"); d.appendChild(document.createTextNode(s)); return d.innerHTML; }
+
+document.getElementById("mergeBtn").onclick = async () => {
+  if (currentPages.length < 2) { alert("Add at least 2 pages to merge."); return; }
+  document.getElementById("processing").style.display = "block";
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("mergeBtn").disabled = true;
+
+  const pageList = currentPages.map(p => ({ file_key: p.fileKey, page: p.page }));
+  const fd = new FormData();
+  fd.append("page_list", JSON.stringify(pageList));
+
+  try {
+    const r = await fetch("/tool/merge-visual", { method: "POST", body: fd });
+    const d = await r.json();
+    let html;
+    if (d.error) html = `<div class="result-card error"><h3>Error</h3><div>${d.error}</div></div>`;
+    else {
+      const pk = d.pass_key || "";
+      const q  = pk ? "?from=" + pk : "";
+      html = `<div class="result-card">
+      <h3>Merged — ${d.total_pages} pages · ${d.size_mb} MB</h3>
+      <a class="download-link" href="${d.download_url}">Download merged.pdf</a>
+
+      <div class="continue-tools">
+        <div class="continue-title">Continue to…</div>
+        ${pk ? '<div style="font-size:12px;color:#22cc55;margin-bottom:8px;padding:6px 8px;background:#111a14;border-radius:6px;border:1px solid #22cc55;">✓ Your merged file will be pre-loaded in the next tool</div>' : ""}
+        <div class="continue-grid">
+          <a href="/tool/compress${q}" class="continue-card"><span class="continue-icon">📉</span><span class="continue-label">Smart Compress</span><span class="continue-arrow">›</span></a>
+          <a href="/tool/organize${q}" class="continue-card"><span class="continue-icon">🗂️</span><span class="continue-label">Organize Pages</span><span class="continue-arrow">›</span></a>
+          <a href="/tool/split${q}" class="continue-card"><span class="continue-icon">🪓</span><span class="continue-label">Split PDF</span><span class="continue-arrow">›</span></a>
+          <a href="/tool/watermark${q}" class="continue-card"><span class="continue-icon">💧</span><span class="continue-label">Watermark</span><span class="continue-arrow">›</span></a>
+          <a href="/tool/page-numbers${q}" class="continue-card"><span class="continue-icon">#️⃣</span><span class="continue-label">Page Numbers</span><span class="continue-arrow">›</span></a>
+          <a href="/tool/sign-pdf${q}" class="continue-card"><span class="continue-icon">✍️</span><span class="continue-label">Sign PDF</span><span class="continue-arrow">›</span></a>
+        </div>
+      </div>
+      </div>`;
+    }
+    document.getElementById("results").innerHTML = html;
+  } catch(e) {
+    document.getElementById("results").innerHTML = `<div class="result-card error">${e.message}</div>`;
+  } finally {
+    document.getElementById("processing").style.display = "none";
+    document.getElementById("mergeBtn").disabled = false;
+  }
+};
+</script>
+{% endblock %}

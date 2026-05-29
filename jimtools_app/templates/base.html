@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}JimTools{% endblock %}</title>
+  <meta name="description" content="Private, offline PDF workstation — JimTools">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1115;
+      --surface: #181b22;
+      --surface-2: #20242d;
+      --border: #2a2f3a;
+      --text: #e8eaed;
+      --text-dim: #9aa0a6;
+      --accent: #e8eaed;
+      --accent-fg: #0f1115;
+      --success: #4ade80;
+      --warning: #fbbf24;
+      --error: #f87171;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    a { color: var(--text); text-decoration: none; }
+    a:hover { opacity: 0.7; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      background: var(--surface);
+    }
+    .logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+    .logo span { color: var(--text-dim); font-weight: 400; }
+    nav a { margin-left: 16px; color: var(--text-dim); font-size: 14px; }
+    nav a:hover { color: var(--text); }
+    h1 { font-size: 32px; margin-bottom: 8px; letter-spacing: -0.5px; }
+    h2 { font-size: 20px; margin-bottom: 16px; }
+    .subtitle { color: var(--text-dim); margin-bottom: 32px; }
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+    }
+    .tool-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      cursor: pointer;
+      transition: transform 0.15s, border-color 0.15s;
+      display: block;
+    }
+    .tool-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--text-dim);
+    }
+    .tool-card .icon { font-size: 28px; margin-bottom: 8px; }
+    .tool-card .title { font-weight: 600; margin-bottom: 4px; }
+    .tool-card .desc { color: var(--text-dim); font-size: 13px; }
+    .tool-card.gsl { border-color: #c9a44a; }
+    .tool-card.gsl::after {
+      content: "GSL";
+      position: absolute;
+      top: 8px; right: 8px;
+      background: #c9a44a; color: #1a1100;
+      font-size: 10px; font-weight: 700;
+      padding: 2px 6px; border-radius: 4px;
+    }
+    .tool-card { position: relative; }
+    .section-title {
+      margin-top: 32px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+    }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+    .form-row { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 14px; }
+    .hint { color: var(--text-dim); font-size: 12px; margin-top: 4px; }
+    input[type="text"], input[type="password"], input[type="number"], select, textarea {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--text-dim);
+    }
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      background: var(--surface-2);
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--text-dim);
+      background: var(--surface);
+    }
+    .dropzone input[type=file] { display: none; }
+    .dropzone .dz-text { color: var(--text-dim); font-size: 14px; margin-top: 8px; }
+    .dropzone .dz-icon { font-size: 36px; margin-bottom: 8px; }
+    .file-list { margin-top: 12px; }
+    .file-list .file-item {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 13px;
+      display: flex; justify-content: space-between;
+    }
+    .btn {
+      background: var(--accent);
+      color: var(--accent-fg);
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .preset-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .preset-btn {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+    .preset-btn:hover { border-color: var(--text-dim); }
+    .preset-btn.active {
+      background: var(--accent);
+      color: var(--accent-fg);
+      border-color: var(--accent);
+    }
+    .preset-btn .preset-name { font-weight: 600; }
+    .preset-btn .preset-size { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+    .preset-btn.active .preset-size { color: var(--accent-fg); opacity: 0.7; }
+    .result-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--success);
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+    .result-card.warning { border-left-color: var(--warning); }
+    .result-card.error { border-left-color: var(--error); }
+    .result-card h3 { margin-bottom: 8px; font-size: 15px; }
+    .result-card .stats {
+      display: flex; flex-wrap: wrap;
+      gap: 12px; margin: 12px 0;
+      color: var(--text-dim); font-size: 13px;
+    }
+    .result-card .stats strong { color: var(--text); }
+    .result-card .download-link {
+      display: inline-block;
+      margin-top: 8px;
+      background: var(--accent);
+      color: var(--accent-fg);
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .processing {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-dim);
+    }
+    .spinner {
+      display: inline-block; width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--text);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .flash {
+      background: var(--error); color: white;
+      padding: 12px 16px; border-radius: 8px;
+      margin-bottom: 16px; font-size: 14px;
+    }
+    .back-link { color: var(--text-dim); font-size: 14px; margin-bottom: 16px; display: inline-block; }
+  
+    .continue-tools {
+      margin-top: 20px; padding: 18px 20px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    }
+    .continue-title { font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+    .continue-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .continue-card {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px; background: var(--surface-2);
+      border: 1px solid var(--border); border-radius: 8px;
+      text-decoration: none; color: var(--text); font-size: 13px;
+      transition: border-color .15s, background .15s;
+    }
+    .continue-card:hover { border-color: var(--text-dim); background: var(--surface); }
+    .continue-icon { font-size: 16px; }
+    .continue-arrow { color: var(--text-dim); margin-left: auto; font-size: 16px; }
+    </style>
+</head>
+<body>
+  {% block header %}
+  <header>
+    <div class="logo">GSL <span>Tools</span></div>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/logout">Sign out</a>
+    </nav>
+  </header>
+  {% endblock %}
+  <div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    
+{%- macro continue_tools(tools) %}
+<div class="continue-tools">
+  <div class="continue-title">Continue to…</div>
+  <div class="continue-grid">
+    {%- for t in tools %}
+    <a href="{{ t.url }}" class="continue-card">
+      <span class="continue-icon">{{ t.icon }}</span>
+      <span class="continue-label">{{ t.name }}</span>
+      <span class="continue-arrow">›</span>
+    </a>
+    {%- endfor %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% block content %}{% endblock %}
+  </div>
+
+<script>
+// ── FILE PASSTHROUGH — auto-load staged file from previous tool ────────────────
+(function(){
+  const params = new URLSearchParams(window.location.search);
+  const passKey = params.get("from");
+  if (!passKey) return;
+
+  // Fetch file info from server
+  fetch("/api/preload/" + passKey)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) return;
+      // Find the main dropzone on the page and replace it with a pre-loaded banner
+      const dz = document.querySelector(".dropzone");
+      if (!dz) return;
+
+      // Build the pre-loaded banner
+      const banner = document.createElement("div");
+      banner.id = "preloadBanner";
+      banner.style.cssText = "background:#111a14;border:2px solid #22cc55;border-radius:8px;padding:14px 18px;display:flex;align-items:center;gap:14px;";
+      banner.innerHTML = `
+        <span style="font-size:24px;">📄</span>
+        <div style="flex:1;">
+          <div style="font-weight:700;color:#22cc55;font-size:14px;">File ready from previous step</div>
+          <div style="color:var(--text-dim);font-size:13px;margin-top:2px;">${d.original_name} &nbsp;·&nbsp; ${d.size_mb} MB</div>
+        </div>
+        <button onclick="clearPreload()" style="background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;">✕ Clear</button>
+      `;
+
+      // Insert banner before dropzone and hide dropzone
+      dz.parentNode.insertBefore(banner, dz);
+      dz.style.display = "none";
+
+      // Inject hidden pass_key input into any form on the page
+      // (all tools use FormData, so we intercept fetch calls instead)
+      window._preloadPassKey = passKey;
+      window._preloadName    = d.original_name;
+      window._preloadSizeMb  = d.size_mb;
+
+      // Notify tool pages that a preloaded file is ready
+      document.dispatchEvent(new CustomEvent("preloadReady", { detail: d }));
+
+      // Patch the global FormData to auto-append pass_key
+      const _OrigFD = window.FormData;
+      window._patchedFD = true;
+      // Simpler: patch fetch so every POST FormData gets the key appended
+      const origFetch = window.fetch;
+      window.fetch = function(url, opts) {
+        if (opts && opts.method && opts.method.toUpperCase()==="POST" && opts.body instanceof FormData && window._preloadPassKey) {
+          const body = opts.body;
+          // Only append if the form doesn't already have a file upload
+          if (!body.has("file") && !body.has("files") && !body.has("sig_file")) {
+            body.append("pass_key", window._preloadPassKey);
+          }
+        }
+        return origFetch.apply(this, arguments);
+      };
+    })
+    .catch(()=>{});
+})();
+
+function clearPreload() {
+  window._preloadPassKey = null;
+  const banner = document.getElementById("preloadBanner");
+  if (banner) banner.remove();
+  const dz = document.querySelector(".dropzone");
+  if (dz) dz.style.display = "";
+  // Remove ?from= from URL without reload
+  const url = new URL(window.location);
+  url.searchParams.delete("from");
+  history.replaceState({}, "", url);
+  document.dispatchEvent(new CustomEvent("preloadCleared"));
+}
+</script>
+
+  <footer style="margin-top:48px;padding:20px 0 24px;border-top:1px solid var(--border);text-align:center;color:var(--text-dim);font-size:12px;">
+    JimTools &nbsp;·&nbsp; Built by <strong>Zunaed Zaman Jim</strong> &nbsp;·&nbsp; Built with <a href="https://claude.ai" style="color:var(--text-dim);text-decoration:none;">Claude (Anthropic)</a> &nbsp;·&nbsp; <a href="https://github.com/ZunaedZamanJim/JimTools" style="color:var(--text-dim);text-decoration:none;">Open Source on GitHub</a>
+  </footer>
+</body>
+</html>

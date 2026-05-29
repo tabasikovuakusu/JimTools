@@ -1,0 +1,7 @@
+flask
+pikepdf
+pymupdf
+pdf2docx
+pdfplumber
+openpyxl
+ocrmypdf

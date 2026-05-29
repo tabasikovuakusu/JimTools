@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Add Watermark — JimTools{% endblock %}
+{% block content %}
+<a href="/" class="back-link">← Back to all tools</a>
+<h1>Add Watermark</h1>
+<p class="subtitle">Add custom text across every page.</p>
+
+<div class="panel">
+
+        <div class="form-row">
+          <label>Watermark text</label>
+          <input type="text" id="text" placeholder="e.g. CONFIDENTIAL">
+        </div>
+        <div class="form-row">
+          <label>Position</label>
+          <select id="position">
+            <option value="diagonal">Diagonal (across page)</option>
+            <option value="center">Center</option>
+            <option value="top">Top</option>
+            <option value="bottom">Bottom</option>
+            <option value="corner">Top-right corner</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Opacity</label>
+          <input type="number" id="opacity" min="0.1" max="1.0" step="0.05" value="0.3">
+        </div>
+        
+  <div class="form-row">
+    <label>File</label>
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">📤</div>
+      <div><strong>Click or drop a file here</strong></div>
+      <input type="file" id="fileInput"  accept=".pdf">
+    </div>
+    <div class="file-list" id="fileList"></div>
+  </div>
+  <button class="btn" id="submitBtn" disabled>Run</button>
+</div>
+
+<div id="processing" style="display: none;" class="panel processing">
+  <div class="spinner"></div><div>Processing…</div>
+</div>
+<div id="results"></div>
+
+<script>
+let selectedFiles = [];
+let usingPreload = false;
+const MULTI = false;
+const dz = document.getElementById("dropzone");
+const fi = document.getElementById("fileInput");
+const fl = document.getElementById("fileList");
+const sb = document.getElementById("submitBtn");
+document.addEventListener("preloadReady", () => { usingPreload = true; sb.disabled = false; });
+document.addEventListener("preloadCleared", () => { usingPreload = false; sb.disabled = selectedFiles.length === 0; });
+dz.onclick = () => fi.click();
+dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("dragover"); };
+dz.ondragleave = () => dz.classList.remove("dragover");
+dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove("dragover"); add([...e.dataTransfer.files]); };
+fi.onchange = () => add([...fi.files]);
+function add(files) {
+  if (MULTI) selectedFiles = selectedFiles.concat(files);
+  else selectedFiles = [files[0]];
+  render();
+}
+function render() {
+  fl.innerHTML = selectedFiles.map((f, i) =>
+    `<div class="file-item"><span>${f.name}</span><span>${(f.size/1024/1024).toFixed(2)} MB <a href="#" data-i="${i}" class="remove" style="margin-left: 12px; color: var(--text-dim);">✕</a></span></div>`
+  ).join("");
+  document.querySelectorAll(".remove").forEach(el => el.onclick = (e) => { e.preventDefault(); selectedFiles.splice(parseInt(el.dataset.i), 1); render(); });
+  sb.disabled = selectedFiles.length === 0;
+}
+
+sb.onclick = async () => {
+  const fd = new FormData();
+  if (MULTI) selectedFiles.forEach(f => fd.append("files", f));
+  else if (selectedFiles[0]) fd.append("file", selectedFiles[0]);
+  
+          fd.append("text", document.getElementById("text").value);
+          fd.append("position", document.getElementById("position").value);
+          fd.append("opacity", document.getElementById("opacity").value);
+        
+  document.getElementById("processing").style.display = "block";
+  document.getElementById("results").innerHTML = "";
+  sb.disabled = true;
+  try {
+    const r = await fetch("/tool/watermark", { method: "POST", body: fd });
+    const d = await r.json();
+    let html;
+    if (d.error) html = `<div class="result-card error"><h3>Error</h3><div>${d.error}</div></div>`;
+    else { html = `<div class="result-card"><h3>Watermark added</h3><a class="download-link" href="${d.download_url}">Download</a></div>`; }
+    document.getElementById("results").innerHTML = html;
+  } catch (e) {
+    document.getElementById("results").innerHTML = `<div class="result-card error">${e.message}</div>`;
+  } finally {
+    document.getElementById("processing").style.display = "none";
+    sb.disabled = selectedFiles.length === 0 && !usingPreload;
+  }
+};
+</script>
+{% endblock %}

@@ -1,0 +1,575 @@
+{% extends "base.html" %}
+{% block title %}Fill PDF Form — JimTools{% endblock %}
+{% block content %}
+<a href="/" class="back-link">← Back to all tools</a>
+<h1>Fill PDF Form</h1>
+<p class="subtitle">Fill INZ forms, university forms, and any fillable PDF — type in fields and add your signature.</p>
+
+<!-- UPLOAD PANEL -->
+<div class="panel" id="uploadPanel">
+  <div class="form-row">
+    <label>PDF file</label>
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">📋</div>
+      <div><strong>Click or drop a fillable PDF here</strong></div>
+      <div class="dz-text">INZ 1226, offer letters, university forms, application forms</div>
+      <input type="file" id="fileInput" accept=".pdf">
+    </div>
+  </div>
+  <button class="btn" id="loadBtn" disabled>Load Form</button>
+</div>
+
+<div id="loadingPanel" class="panel processing" style="display:none;">
+  <div class="spinner"></div>
+  <div>Reading form fields…</div>
+</div>
+
+<div id="noFieldsPanel" class="panel" style="display:none;">
+  <div style="color:#e0a000;font-weight:600;margin-bottom:8px;">⚠ No fillable fields detected</div>
+  <div style="color:var(--text-dim);font-size:14px;">This PDF has no fillable fields. Use <a href="/tool/sign-pdf">Sign PDF</a> to add a signature only.</div>
+</div>
+
+<!-- MAIN FORM PANEL -->
+<div id="formPanel" style="display:none;">
+
+  <!-- Top toolbar (always visible) -->
+  <div class="form-toolbar">
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="tool-mode-btn active" id="btnModeFill" onclick="setMode('fill')">📝 Fill Fields</button>
+      <button class="tool-mode-btn" id="btnModeSign" onclick="setMode('sign')">✍️ Add Signature</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <span id="fieldCountLabel" style="color:var(--text-dim);font-size:13px;"></span>
+      <button class="btn btn-secondary" onclick="clearAllFields()" style="padding:8px 14px;font-size:13px;">Clear fields</button>
+      <button class="btn" id="downloadBtn">Fill &amp; Download</button>
+    </div>
+  </div>
+
+  <!-- Signature BUILDER — shown inline, collapses after sig is set -->
+  <div id="sigBuilderPanel" style="display:none;">
+    <div class="panel">
+      <div style="font-weight:600;margin-bottom:12px;font-size:14px;">Create your signature</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-secondary sig-tab" id="stDraw" onclick="switchSigTab('draw')">✏️ Draw</button>
+        <button class="btn btn-secondary sig-tab" id="stUpload" onclick="switchSigTab('upload')">📁 Upload image</button>
+      </div>
+      <div id="sigBuilderInner">
+      <div id="sigDrawTab">
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:6px;">Draw with mouse or finger on the white area</div>
+        <div style="position:relative;background:#fff;border:2px solid var(--border);border-radius:6px;display:inline-block;">
+          <canvas id="sigCanvas" width="480" height="130" style="display:block;cursor:crosshair;border-radius:4px;"></canvas>
+          <div id="sigHint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:18px;pointer-events:none;font-style:italic;">Sign here</div>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;">
+          <button class="btn btn-secondary" onclick="clearSigCanvas()" style="padding:6px 14px;font-size:13px;">Clear</button>
+          <button class="btn" id="useSigBtn" onclick="useSigCanvas()" style="padding:6px 14px;font-size:13px;" disabled>Use this →</button>
+        </div>
+      </div>
+      <div id="sigUploadTab" style="display:none;">
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:6px;">Upload a PNG (transparent background works best)</div>
+        <div class="dropzone" id="sigDz" style="padding:16px;">
+          <div>📷 Click or drop signature image here</div>
+          <input type="file" id="sigFileInput" accept="image/png,image/jpeg">
+        </div>
+        <div id="sigUploadPreview" style="margin-top:10px;display:none;">
+          <img id="sigUploadImg" style="max-height:80px;max-width:360px;border:1px solid var(--border);border-radius:4px;background:#fff;padding:4px;">
+          <div style="margin-top:8px;"><button class="btn" onclick="useUploadedSig()" style="padding:6px 14px;font-size:13px;">Use this →</button></div>
+        </div>
+      </div>
+    </div>
+      </div>
+
+      <!-- Style picker: shown after drawing/upload -->
+      <div id="sigPickerPanel" style="display:none;margin-top:4px;">
+        <div style="font-weight:600;margin-bottom:10px;font-size:14px;">Choose signature style</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+          <div class="sig-pick-card" id="pickCardOrig" onclick="pickSig('orig')">
+            <div style="background:#fff;border-radius:4px;padding:8px;margin-bottom:6px;min-height:56px;display:flex;align-items:center;justify-content:center;">
+              <img id="sigPickOrig" style="max-height:52px;max-width:190px;">
+            </div>
+            <div style="font-size:12px;text-align:center;color:var(--text-dim);">Original</div>
+          </div>
+          <div class="sig-pick-card selected" id="pickCardTrans" onclick="pickSig('trans')">
+            <div style="background:repeating-conic-gradient(#aaa 0% 25%,#fff 0% 50%) 0 0/16px 16px;border-radius:4px;padding:8px;margin-bottom:6px;min-height:56px;display:flex;align-items:center;justify-content:center;">
+              <img id="sigPickTrans" style="max-height:52px;max-width:190px;">
+            </div>
+            <div style="font-size:12px;text-align:center;color:var(--text-dim);">Transparent <span style="color:#22cc55;font-size:11px;">✓ Recommended</span></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" onclick="confirmSigPick()">Use this signature →</button>
+          <button class="btn btn-secondary" onclick="backToSigBuilder()" style="padding:6px 14px;font-size:13px;">← Redraw</button>
+        </div>
+      </div>
+  </div>  </div>
+
+  <!-- Status / download result -->
+  <div id="dlStatus" style="color:var(--text-dim);font-size:13px;margin-bottom:12px;"></div>
+
+  <!-- PAGES -->
+  <div id="pagesContainer" style="padding-bottom:100px;"></div>
+  <div id="resultArea" style="margin-top:20px;"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FLOATING SIGNATURE BAR — fixed to bottom of viewport
+     Visible only when signature is ready and mode = sign
+     ══════════════════════════════════════════════════════════════ -->
+<div id="floatSigBar" style="display:none;">
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <img id="sigPreviewSmall" style="max-height:44px;max-width:140px;background:#fff;border-radius:4px;padding:3px;flex-shrink:0;">
+    <div style="display:flex;flex-direction:column;gap:2px;">
+      <span style="color:#22cc55;font-weight:700;font-size:13px;">✓ Signature ready</span>
+      <span style="color:var(--text-dim);font-size:12px;">Scroll to any page and <strong style="color:var(--text);">click</strong> to stamp</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-left:8px;">
+      <span style="font-size:12px;color:var(--text-dim);white-space:nowrap;">Size:</span>
+      <input type="range" id="sigSizeSlider" min="5" max="45" value="20" style="width:130px;" oninput="updateSigSize()">
+      <span id="sigSizeLabel" style="font-size:12px;color:var(--text-dim);white-space:nowrap;width:56px;">20% wide</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-left:auto;">
+      <button class="btn btn-secondary" onclick="clearSigPlacements()" style="padding:6px 14px;font-size:13px;">Clear stamps</button>
+      <button class="btn btn-secondary" onclick="changeSig()" style="padding:6px 14px;font-size:13px;">Change sig</button>
+      <button class="btn btn-secondary" onclick="setMode('fill')" style="padding:6px 14px;font-size:13px;">← Back to Fill</button>
+    </div>
+  </div>
+</div>
+
+<!-- Cursor ghost — follows mouse over pages in sign mode -->
+<div id="sigGhost" style="display:none;position:fixed;pointer-events:none;z-index:9000;opacity:0.65;transform:translate(-50%,-50%);">
+  <img id="sigGhostImg" style="max-height:60px;max-width:200px;background:transparent;">
+</div>
+
+<style>
+/* ── Toolbar ─────────────────────────────────────────────────── */
+.form-toolbar {
+  display:flex; justify-content:space-between; align-items:center;
+  flex-wrap:wrap; gap:12px; padding:14px 20px; margin-bottom:20px;
+  background:var(--surface); border:1px solid var(--border); border-radius:10px;
+}
+.tool-mode-btn {
+  background:var(--surface-2); color:var(--text-dim);
+  border:1px solid var(--border); padding:8px 18px;
+  border-radius:8px; font-size:14px; cursor:pointer; transition:all .15s;
+}
+.tool-mode-btn.active { background:var(--accent); color:var(--accent-fg); border-color:var(--accent); font-weight:600; }
+.sig-tab.active { background:var(--accent); color:var(--accent-fg); border-color:var(--accent); }
+
+/* ── Floating sig bar ────────────────────────────────────────── */
+#floatSigBar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 8000;
+  background: #111a14;
+  border-top: 2px solid #22cc55;
+  padding: 12px 24px;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.5);
+}
+
+/* ── Page wrapper ────────────────────────────────────────────── */
+.form-page-wrap { margin-bottom:28px; background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.form-page-header { background:var(--surface-2); border-bottom:1px solid var(--border); padding:8px 16px; font-size:13px; color:var(--text-dim); font-weight:600; }
+.form-page-img-wrap { position:relative; width:100%; line-height:0; }
+.form-page-img-wrap img { width:100%; display:block; }
+
+/* ── Field overlays — ALWAYS readable ───────────────────────── */
+.field-overlay {
+  position:absolute;
+  background:rgba(255,240,140,0.93) !important;
+  border:2px solid #c8a000 !important;
+  border-radius:2px; padding:1px 3px;
+  font-size:11px; font-family:Arial,sans-serif;
+  color:#000000 !important;
+  box-sizing:border-box; cursor:text; min-height:16px;
+  overflow:hidden;
+}
+/* Remove number input spinners — they waste space in narrow date fields */
+.field-overlay[type="number"]::-webkit-inner-spin-button,
+.field-overlay[type="number"]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+.field-overlay[type="number"] { -moz-appearance:textfield; text-align:center; }
+.field-overlay:focus { outline:none !important; background:rgba(255,248,170,0.98) !important; border-color:#a07800 !important; color:#000 !important; z-index:20; box-shadow:0 0 0 2px rgba(201,164,74,.4); }
+.field-overlay::placeholder { color:#888; font-style:italic; }
+.field-overlay.checkbox-overlay { display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; font-weight:700; background:rgba(255,240,140,0.85) !important; color:#000 !important; }
+.field-overlay.checkbox-overlay.checked { background:rgba(200,230,180,0.95) !important; border-color:#448844 !important; }
+.field-overlay.select-overlay { appearance:none; -webkit-appearance:none; background:rgba(255,240,140,0.93) !important; color:#000 !important; padding-right:18px; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23555'/%3E%3C/svg%3E") !important; background-repeat:no-repeat !important; background-position:right 4px center !important; }
+
+/* ── In sign mode — page has a subtle green outline cue ──────── */
+.form-page-img-wrap.sign-mode { cursor:crosshair; outline:2px dashed rgba(34,204,85,0.4); }
+
+/* ── Signature stamps ────────────────────────────────────────── */
+.sig-stamp-ff { position:absolute; cursor:move; user-select:none; opacity:0.88; z-index:30; }
+.sig-stamp-ff img { display:block; width:100%; height:100%; object-fit:contain; }
+.sig-stamp-ff .sd-btn { position:absolute; top:-8px; right:-8px; background:#cc2222; color:#fff; border-radius:50%; width:18px; height:18px; font-size:11px; font-weight:700; line-height:18px; text-align:center; cursor:pointer; display:none; box-shadow:0 1px 3px rgba(0,0,0,.5); }
+.sig-stamp-ff:hover .sd-btn { display:block; }
+
+.sig-pick-card {
+  border: 2px solid var(--border); border-radius: 8px; padding: 10px;
+  cursor: pointer; transition: border-color .15s; min-width: 160px; flex: 1; max-width: 220px;
+}
+.sig-pick-card:hover { border-color: var(--text-dim); }
+.sig-pick-card.selected { border-color: #22cc55; }
+</style>
+
+<script>
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let selectedFile=null, fileKey="", pagesData=[];
+let fieldValues={};
+let sigDataUrl=null;
+let sigPlacements={};  // [pgIdx] = [{x,y,w,h} normalised]
+let sigSizePct=0.20;
+let currentMode="fill";
+
+// ─── UPLOAD ───────────────────────────────────────────────────────────────────
+const dz=document.getElementById("dropzone"), fi=document.getElementById("fileInput");
+dz.onclick=()=>fi.click();
+dz.ondragover=e=>{e.preventDefault();dz.classList.add("dragover");};
+dz.ondragleave=()=>dz.classList.remove("dragover");
+dz.ondrop=e=>{e.preventDefault();dz.classList.remove("dragover");setFile(e.dataTransfer.files[0]);};
+fi.onchange=()=>setFile(fi.files[0]);
+function setFile(f){if(!f)return;selectedFile=f;document.getElementById("loadBtn").disabled=false;dz.querySelector("div:nth-child(2)").textContent=f.name;}
+document.getElementById("loadBtn").onclick=async()=>{
+  document.getElementById("uploadPanel").style.display="none";
+  document.getElementById("loadingPanel").style.display="block";
+  const fd=new FormData();fd.append("file",selectedFile);
+  try{
+    const r=await fetch("/api/form-fields",{method:"POST",body:fd});
+    const d=await r.json();
+    if(d.error){alert("Error: "+d.error);location.reload();return;}
+    fileKey=d.file_key;pagesData=d.pages;
+    document.getElementById("loadingPanel").style.display="none";
+    if(d.total_fields===0){document.getElementById("noFieldsPanel").style.display="block";}
+    else{
+      document.getElementById("fieldCountLabel").textContent=d.total_fields+" fields · "+d.total_pages+" page"+(d.total_pages!==1?"s":"");
+      buildForm();
+      document.getElementById("formPanel").style.display="block";
+    }
+  }catch(e){alert("Failed: "+e.message);location.reload();}
+};
+
+// ─── MODE TOGGLE ──────────────────────────────────────────────────────────────
+function setMode(m){
+  currentMode=m;
+  document.getElementById("btnModeFill").classList.toggle("active",m==="fill");
+  document.getElementById("btnModeSign").classList.toggle("active",m==="sign");
+  // Sign builder: show only if no sig yet
+  const hasSig=!!sigDataUrl;
+  document.getElementById("sigBuilderPanel").style.display=(!hasSig&&m==="sign")?"block":"none";
+  // Floating bar: show only when sig is ready AND in sign mode
+  document.getElementById("floatSigBar").style.display=(hasSig&&m==="sign")?"block":"none";
+  // Page cursor
+  document.querySelectorAll(".form-page-img-wrap").forEach(el=>{
+    el.classList.toggle("sign-mode",m==="sign"&&hasSig);
+  });
+  // Hide ghost when not in sign mode
+  if(m!=="sign") document.getElementById("sigGhost").style.display="none";
+}
+
+// ─── SIGNATURE CANVAS ─────────────────────────────────────────────────────────
+const sc=document.getElementById("sigCanvas"),sctx=sc.getContext("2d");
+sctx.strokeStyle="#000";sctx.lineWidth=2.2;sctx.lineCap="round";sctx.lineJoin="round";
+let sDrawing=false,sHasDraw=false;
+function gP(e){const r=sc.getBoundingClientRect(),src=e.touches?e.touches[0]:e;return{x:(src.clientX-r.left)*(sc.width/r.width),y:(src.clientY-r.top)*(sc.height/r.height)};}
+sc.addEventListener("mousedown",e=>{sDrawing=true;const p=gP(e);sctx.beginPath();sctx.moveTo(p.x,p.y);});
+sc.addEventListener("mousemove",e=>{if(!sDrawing)return;const p=gP(e);sctx.lineTo(p.x,p.y);sctx.stroke();sHasDraw=true;document.getElementById("sigHint").style.display="none";document.getElementById("useSigBtn").disabled=false;});
+sc.addEventListener("mouseup",()=>sDrawing=false);
+sc.addEventListener("mouseleave",()=>sDrawing=false);
+sc.addEventListener("touchstart",e=>{e.preventDefault();sDrawing=true;const p=gP(e);sctx.beginPath();sctx.moveTo(p.x,p.y);},{passive:false});
+sc.addEventListener("touchmove",e=>{e.preventDefault();if(!sDrawing)return;const p=gP(e);sctx.lineTo(p.x,p.y);sctx.stroke();sHasDraw=true;document.getElementById("sigHint").style.display="none";document.getElementById("useSigBtn").disabled=false;},{passive:false});
+sc.addEventListener("touchend",()=>sDrawing=false);
+function clearSigCanvas(){sctx.clearRect(0,0,sc.width,sc.height);sHasDraw=false;document.getElementById("sigHint").style.display="flex";document.getElementById("useSigBtn").disabled=true;}
+function useSigCanvas(){if(!sHasDraw)return;showSigPicker(sc.toDataURL("image/png"));}
+
+// ─── SIG TABS ─────────────────────────────────────────────────────────────────
+function switchSigTab(t){
+  document.getElementById("sigDrawTab").style.display=t==="draw"?"block":"none";
+  document.getElementById("sigUploadTab").style.display=t==="upload"?"block":"none";
+  document.getElementById("stDraw").classList.toggle("active",t==="draw");
+  document.getElementById("stUpload").classList.toggle("active",t==="upload");
+}
+switchSigTab("draw");
+const sDz=document.getElementById("sigDz"),sFi=document.getElementById("sigFileInput");
+sDz.onclick=()=>sFi.click();
+sDz.ondragover=e=>{e.preventDefault();sDz.classList.add("dragover");};
+sDz.ondragleave=()=>sDz.classList.remove("dragover");
+sDz.ondrop=e=>{e.preventDefault();sDz.classList.remove("dragover");handleSigImg(e.dataTransfer.files[0]);};
+sFi.onchange=()=>handleSigImg(sFi.files[0]);
+function handleSigImg(f){if(!f)return;const rd=new FileReader();rd.onload=ev=>{document.getElementById("sigUploadImg").src=ev.target.result;document.getElementById("sigUploadPreview").style.display="block";sDz.style.display="none";};rd.readAsDataURL(f);}
+function useUploadedSig(){showSigPicker(document.getElementById("sigUploadImg").src);}
+
+function activateSig(){
+  document.getElementById("sigPreviewSmall").src=sigDataUrl;
+  document.getElementById("sigGhostImg").src=sigDataUrl;
+  document.getElementById("sigBuilderPanel").style.display="none";
+  // Automatically switch to sign mode and show floating bar
+  currentMode="sign";
+  document.getElementById("btnModeFill").classList.remove("active");
+  document.getElementById("btnModeSign").classList.add("active");
+  document.getElementById("floatSigBar").style.display="block";
+  document.querySelectorAll(".form-page-img-wrap").forEach(el=>el.classList.add("sign-mode"));
+}
+
+function changeSig(){
+  sigDataUrl=null;sigPlacements={};
+  document.querySelectorAll(".sig-stamp-ff").forEach(el=>el.remove());
+  pagesData.forEach((_,i)=>sigPlacements[i]=[]);
+  document.getElementById("floatSigBar").style.display="none";
+  document.getElementById("sigGhost").style.display="none";
+  document.getElementById("sigBuilderPanel").style.display="block";
+  document.querySelectorAll(".form-page-img-wrap").forEach(el=>el.classList.remove("sign-mode"));
+}
+
+function clearSigPlacements(){
+  document.querySelectorAll(".sig-stamp-ff").forEach(el=>el.remove());
+  pagesData.forEach((_,i)=>sigPlacements[i]=[]);
+}
+
+function updateSigSize(){
+  const v=parseInt(document.getElementById("sigSizeSlider").value);
+  document.getElementById("sigSizeLabel").textContent=v+"% wide";
+  sigSizePct=v/100;
+}
+
+// ─── CURSOR GHOST ─────────────────────────────────────────────────────────────
+// Show a ghost of the signature following the cursor over pages in sign mode
+document.addEventListener("mousemove",e=>{
+  if(currentMode!=="sign"||!sigDataUrl)return;
+  const ghost=document.getElementById("sigGhost");
+  // Check if cursor is over a page image wrap
+  const el=document.elementFromPoint(e.clientX,e.clientY);
+  const wrap=el&&(el.closest(".form-page-img-wrap")||null);
+  if(wrap){
+    ghost.style.display="block";
+    ghost.style.left=e.clientX+"px";
+    ghost.style.top=e.clientY+"px";
+  } else {
+    ghost.style.display="none";
+  }
+});
+
+// ─── BUILD FORM ────────────────────────────────────────────────────────────────
+function buildForm(){
+  const container=document.getElementById("pagesContainer");
+  container.innerHTML="";fieldValues={};sigPlacements={};
+  pagesData.forEach((pg,pgIdx)=>{
+    fieldValues[pgIdx]={};sigPlacements[pgIdx]=[];
+    const wrap=document.createElement("div");wrap.className="form-page-wrap";
+    wrap.innerHTML=`<div class="form-page-header">Page ${pg.page} · ${pg.fields.length} field${pg.fields.length!==1?"s":""}</div>`;
+    const imgWrap=document.createElement("div");imgWrap.className="form-page-img-wrap";imgWrap.id=`pgWrap${pgIdx}`;
+    const img=document.createElement("img");img.src="data:image/jpeg;base64,"+pg.img;img.draggable=false;
+    imgWrap.appendChild(img);
+    // Click to stamp signature
+    imgWrap.addEventListener("click",e=>{
+      if(currentMode!=="sign"||!sigDataUrl)return;
+      if(e.target.closest(".sig-stamp-ff"))return;
+      const rect=imgWrap.getBoundingClientRect();
+      const nx=(e.clientX-rect.left)/rect.width;
+      const ny=(e.clientY-rect.top)/rect.height;
+      const nw=sigSizePct;
+      const nh=nw*(imgWrap.offsetWidth/imgWrap.offsetHeight)*0.35;
+      addSigStamp(pgIdx,imgWrap,nx-nw/2,ny-nh/2,nw,nh);
+    });
+    img.onload=()=>buildOverlays(pgIdx,imgWrap,pg.fields);
+    if(img.complete)buildOverlays(pgIdx,imgWrap,pg.fields);
+    wrap.appendChild(imgWrap);
+    container.appendChild(wrap);
+  });
+}
+
+// ─── FIELD OVERLAYS ───────────────────────────────────────────────────────────
+function buildOverlays(pgIdx,imgWrap,fields){
+  imgWrap.querySelectorAll(".field-overlay").forEach(el=>el.remove());
+  fields.forEach(f=>imgWrap.appendChild(makeFieldEl(f,pgIdx)));
+}
+function makeFieldEl(field,pgIdx){
+  const r=field.rect,t=field.type||"Text";
+  // Field width as fraction of page
+  const fw = r.x1 - r.x0;
+  const fh = r.y1 - r.y0;
+  // For narrow fields (date boxes etc) use border:1px and min sizes
+  const isNarrow = fw < 0.06;  // less than 6% of page width
+  const border   = isNarrow ? "1px" : "2px";
+  const padding  = isNarrow ? "1px 2px" : "1px 4px";
+  // Ensure minimum clickable size — tiny fields get a min-width override
+  const minW = isNarrow ? ";min-width:22px" : "";
+  const style=`left:${r.x0*100}%;top:${r.y0*100}%;width:${fw*100}%;height:${fh*100}%;border-width:${border}!important;padding:${padding}!important${minW};`;
+  // Detect date-component fields by name or extreme narrowness
+  const nm = (field.name||"").toLowerCase();
+  const isDay   = isNarrow && (nm.includes("dd") || nm.includes("day")   || nm.includes("date1"));
+  const isMon   = isNarrow && (nm.includes("mm") || nm.includes("month") || nm.includes("date2"));
+  const isYear  = isNarrow && (nm.includes("yyyy")||nm.includes("year")  || nm.includes("date3"));
+  const isNumericDate = isDay || isMon || isYear;
+  // Smart placeholder: show format hint for date components, empty otherwise
+  const placeholder = isDay?"DD" : isMon?"MM" : isYear?"YYYY" : "";
+  const maxLen = isDay||isMon ? 2 : isYear ? 4 : 524288;
+  let el;
+  if(t==="CheckBox"||t==="RadioButton"){
+    el=document.createElement("div");el.className="field-overlay checkbox-overlay";el.style.cssText=style;
+    const isChecked=field.value&&!["Off","false","0",""].includes(field.value);
+    if(isChecked){el.textContent="✓";el.classList.add("checked");}
+    fieldValues[pgIdx][field.name]=isChecked?"true":"false";
+    el.onclick=()=>{const now=el.classList.toggle("checked");el.textContent=now?"✓":"";fieldValues[pgIdx][field.name]=now?"true":"false";};
+  }else if((t==="ComboBox"||t==="ListBox")&&field.choices?.length){
+    el=document.createElement("select");el.className="field-overlay select-overlay";el.style.cssText=style;
+    el.innerHTML='<option value="">—</option>'+field.choices.map(c=>`<option value="${esc(c)}"${c===field.value?" selected":""}>${esc(c)}</option>`).join("");
+    fieldValues[pgIdx][field.name]=el.value;
+    el.onchange=()=>fieldValues[pgIdx][field.name]=el.value;
+  }else{
+    el=document.createElement("input");el.className="field-overlay";el.style.cssText=style;
+    el.type = isNumericDate ? "number" : "text";
+    if(isDay)  { el.min="1";  el.max="31"; }
+    if(isMon)  { el.min="1";  el.max="12"; }
+    if(isYear) { el.min="1900";el.max="2100"; }
+    el.maxLength = maxLen;
+    el.value = field.value && !["?","??","????"].includes(field.value) ? field.value : "";
+    el.placeholder = placeholder;
+    fieldValues[pgIdx][field.name]=el.value;
+    el.oninput=()=>{
+      // Auto-advance to next field after max digits
+      if(el.type==="number"&&String(el.value).length>=maxLen){
+        const inputs=[...document.querySelectorAll(".field-overlay:not(.checkbox-overlay)")];
+        const idx=inputs.indexOf(el);
+        if(idx>=0&&idx+1<inputs.length)inputs[idx+1].focus();
+      }
+      fieldValues[pgIdx][field.name]=el.value;
+    };
+  }
+  el.title=field.name;
+  return el;
+}
+
+// ─── SIGNATURE STAMPS ─────────────────────────────────────────────────────────
+function addSigStamp(pgIdx,imgWrap,nx,ny,nw,nh){
+  const W=imgWrap.offsetWidth,H=imgWrap.offsetHeight;
+  nx=Math.max(0,Math.min(1-nw,nx));ny=Math.max(0,Math.min(1-nh,ny));
+  const pIdx=sigPlacements[pgIdx].length;
+  sigPlacements[pgIdx].push({x:nx,y:ny,w:nw,h:nh});
+  const stamp=document.createElement("div");stamp.className="sig-stamp-ff";
+  stamp.style.left=(nx*W)+"px";stamp.style.top=(ny*H)+"px";stamp.style.width=(nw*W)+"px";stamp.style.height=(nh*H)+"px";
+  const si=document.createElement("img");si.src=sigDataUrl;si.draggable=false;
+  const del=document.createElement("div");del.className="sd-btn";del.textContent="×";
+  del.onclick=e=>{e.stopPropagation();stamp.remove();sigPlacements[pgIdx].splice(pIdx,1);};
+  stamp.appendChild(si);stamp.appendChild(del);
+  // Drag to reposition
+  let sx,sy,ol,ot;
+  stamp.addEventListener("mousedown",e=>{
+    if(e.target===del)return;e.stopPropagation();
+    sx=e.clientX;sy=e.clientY;ol=stamp.offsetLeft;ot=stamp.offsetTop;
+    const sW=stamp.offsetWidth,sH=stamp.offsetHeight;
+    const onM=ev=>{let nx2=Math.max(0,Math.min(W-sW,ol+(ev.clientX-sx)));let ny2=Math.max(0,Math.min(H-sH,ot+(ev.clientY-sy)));stamp.style.left=nx2+"px";stamp.style.top=ny2+"px";if(sigPlacements[pgIdx][pIdx]){sigPlacements[pgIdx][pIdx].x=nx2/W;sigPlacements[pgIdx][pIdx].y=ny2/H;}};
+    const onU=()=>{document.removeEventListener("mousemove",onM);document.removeEventListener("mouseup",onU);};
+    document.addEventListener("mousemove",onM);document.addEventListener("mouseup",onU);
+  });
+  imgWrap.appendChild(stamp);
+}
+
+// ─── CLEAR FIELDS ─────────────────────────────────────────────────────────────
+function clearAllFields(){
+  document.querySelectorAll(".field-overlay").forEach(el=>{
+    if(el.tagName==="INPUT")el.value="";
+    else if(el.tagName==="SELECT")el.selectedIndex=0;
+    else if(el.classList.contains("checkbox-overlay")){el.textContent="";el.classList.remove("checked");}
+  });
+  Object.keys(fieldValues).forEach(pi=>Object.keys(fieldValues[pi]).forEach(n=>fieldValues[pi][n]=""));
+}
+
+// ─── DOWNLOAD ─────────────────────────────────────────────────────────────────
+document.getElementById("downloadBtn").onclick=async()=>{
+  const allFields=[];
+  pagesData.forEach((_,pi)=>pagesData[pi].fields.forEach(f=>allFields.push({name:f.name,value:fieldValues[pi]?.[f.name]??""})));
+  const allSigPlacements=[];
+  pagesData.forEach((pg,pi)=>{(sigPlacements[pi]||[]).forEach(p=>allSigPlacements.push({page:pg.page,norm:{x:p.x,y:p.y,w:p.w,h:p.h}}));});
+  document.getElementById("downloadBtn").disabled=true;
+  document.getElementById("dlStatus").textContent="Filling and building PDF…";
+  const fd=new FormData();
+  fd.append("file_key",fileKey);fd.append("fields",JSON.stringify(allFields));
+  fd.append("sig_placements",JSON.stringify(allSigPlacements));
+  if (allSigPlacements.length && sigDataUrl) {
+    fd.append("sig_file", dataUrlToBlob(sigDataUrl), "sig.png");
+  }
+  try{
+    const r=await fetch("/tool/form-fill",{method:"POST",body:fd});
+    const d=await r.json();
+    if(d.error){document.getElementById("dlStatus").textContent="Error: "+d.error;document.getElementById("downloadBtn").disabled=false;return;}
+    document.getElementById("dlStatus").textContent="";
+    document.getElementById("resultArea").innerHTML=`<div class="result-card"><h3>Done — ${d.size_mb} MB · ${d.filled} field${d.filled!==1?"s":""} filled${d.sig_placed?` · ${d.sig_placed} signature${d.sig_placed!==1?"s":""} placed`:""}</h3><a class="download-link" href="${d.download_url}">Download filled_form.pdf</a><div style="margin-top:12px;"><a href="/tool/form-fill" style="color:var(--text-dim);font-size:13px;">Fill another form</a></div>
+      <div class="continue-tools">
+        <div class="continue-title">Continue to…</div>
+        <div class="continue-grid"><a href="/tool/sign-pdf" class="continue-card"><span class="continue-icon">✍️</span><span class="continue-label">Sign PDF</span><span class="continue-arrow">›</span></a><a href="/tool/compress" class="continue-card"><span class="continue-icon">📉</span><span class="continue-label">Smart Compress</span><span class="continue-arrow">›</span></a><a href="/tool/organize" class="continue-card"><span class="continue-icon">🗂️</span><span class="continue-label">Organize Pages</span><span class="continue-arrow">›</span></a><a href="/tool/stamp" class="continue-card"><span class="continue-icon">🏷</span><span class="continue-label">Stamp</span><span class="continue-arrow">›</span></a><a href="/tool/protect" class="continue-card"><span class="continue-icon">🔒</span><span class="continue-label">Protect PDF</span><span class="continue-arrow">›</span></a><a href="/tool/merge" class="continue-card"><span class="continue-icon">🔗</span><span class="continue-label">Merge PDFs</span><span class="continue-arrow">›</span></a></div>
+      </div>
+      </div>`;
+    document.getElementById("resultArea").scrollIntoView({behavior:"smooth",block:"nearest"});
+  }catch(e){document.getElementById("dlStatus").textContent="Error: "+e.message;}
+  finally{document.getElementById("downloadBtn").disabled=false;}
+};
+
+// ─── UTIL ─────────────────────────────────────────────────────────────────────
+function dataUrlToBlob(dataUrl) {
+  const [header, data] = dataUrl.split(",");
+  const mime = header.match(/:(.*?);/)[1];
+  const bytes = atob(data);
+  const buf = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
+  return new Blob([buf], {type: mime});
+}
+function esc(s){const d=document.createElement("div");d.appendChild(document.createTextNode(s));return d.innerHTML;}
+window.addEventListener("resize",()=>{pagesData.forEach((pg,pi)=>{const w=document.getElementById(`pgWrap${pi}`);if(w)buildOverlays(pi,w,pg.fields);});});
+
+// ─── BACKGROUND REMOVAL ───────────────────────────────────────────────────────
+function removeBackground(dataUrl, tolerance, callback) {
+  const img = new Image();
+  img.onload = function() {
+    const c = document.createElement("canvas");
+    c.width = img.width; c.height = img.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height);
+    const px = d.data;
+    for (let i = 0; i < px.length; i += 4) {
+      const r=px[i],g=px[i+1],b=px[i+2];
+      if (r > 255-tolerance && g > 255-tolerance && b > 255-tolerance) {
+        const w = Math.min(r,g,b);
+        px[i+3] = Math.min(px[i+3], Math.max(0, (255-w)*3));
+      }
+    }
+    ctx.putImageData(d, 0, 0);
+    callback(c.toDataURL("image/png"));
+  };
+  img.src = dataUrl;
+}
+
+function showSigPicker(origUrl) {
+  removeBackground(origUrl, 75, function(transUrl) {
+    const panel = document.getElementById("sigPickerPanel");
+    if (!panel) { sigDataUrl = transUrl; activateSig(); return; }
+    document.getElementById("sigPickOrig").src  = origUrl;
+    document.getElementById("sigPickTrans").src = transUrl;
+    panel._orig  = origUrl;
+    panel._trans = transUrl;
+    panel.style.display = "block";
+    const inner = document.getElementById("sigBuilderInner");
+    if (inner) inner.style.display = "none";
+  });
+}
+
+let _pickerChoice = "trans";
+function pickSig(c) {
+  _pickerChoice = c;
+  document.getElementById("pickCardOrig").classList.toggle("selected",  c==="orig");
+  document.getElementById("pickCardTrans").classList.toggle("selected", c==="trans");
+}
+function confirmSigPick() {
+  const panel = document.getElementById("sigPickerPanel");
+  sigDataUrl = _pickerChoice==="orig" ? panel._orig : panel._trans;
+  panel.style.display = "none";
+  activateSig();
+}
+function backToSigBuilder() {
+  document.getElementById("sigPickerPanel").style.display = "none";
+  const inner = document.getElementById("sigBuilderInner");
+  if (inner) inner.style.display = "block";
+  if (typeof clearSigCanvas === "function") clearSigCanvas();
+  else if (typeof clearCanvas === "function") clearCanvas();
+}
+
+</script>
+{% endblock %}

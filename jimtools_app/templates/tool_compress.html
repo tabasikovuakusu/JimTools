@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Compress PDF — JimTools{% endblock %}
+{% block content %}
+<a href="/" class="back-link">← Back to all tools</a>
+<h1>Smart Compress</h1>
+<p class="subtitle">Hit a target file size on purpose. Color seals stay color. If the file can't compress that small, we tell you and offer auto-split.</p>
+
+<div class="panel">
+  <div class="form-row">
+    <label>Destination preset</label>
+    <div class="preset-grid">
+      <button type="button" class="preset-btn active" data-preset="canada">
+        <div class="preset-name">Canada</div><div class="preset-size">5 MB</div>
+      </button>
+      <button type="button" class="preset-btn" data-preset="newzealand">
+        <div class="preset-name">New Zealand</div><div class="preset-size">10 MB</div>
+      </button>
+      <button type="button" class="preset-btn" data-preset="australia">
+        <div class="preset-name">Australia</div><div class="preset-size">10 MB</div>
+      </button>
+      <button type="button" class="preset-btn" data-preset="uk">
+        <div class="preset-name">UK</div><div class="preset-size">6 MB</div>
+      </button>
+      <button type="button" class="preset-btn" data-preset="custom">
+        <div class="preset-name">Custom</div><div class="preset-size">Set below</div>
+      </button>
+    </div>
+    <div id="customRow" style="display: none; margin-top: 12px;">
+      <label>Custom target size (MB)</label>
+      <input type="number" id="customMb" step="0.1" min="0.1" value="5">
+    </div>
+  </div>
+
+  <div class="form-row">
+    <label>Files to compress</label>
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">📤</div>
+      <div><strong>Click or drop PDFs here</strong></div>
+      <div class="dz-text">Batch upload supported — process multiple files at once</div>
+      <input type="file" id="fileInput" multiple accept=".pdf">
+    </div>
+    <div class="file-list" id="fileList"></div>
+  </div>
+
+  <button class="btn" id="submitBtn" disabled>Compress</button>
+</div>
+
+<div id="processing" style="display: none;" class="panel processing">
+  <div class="spinner"></div>
+  <div>Compressing... this can take 30s–2min per file for large PDFs.</div>
+</div>
+
+<div id="results"></div>
+
+<script>
+let selectedFiles = [];
+let activePreset = "canada";
+let usingPreload = false;   // true when a pass-through file is active
+
+const dz = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+const fileList = document.getElementById("fileList");
+const submitBtn = document.getElementById("submitBtn");
+const customRow = document.getElementById("customRow");
+
+// ── Handle preload events from base.html ────────────────────────────────────
+document.addEventListener("preloadReady", () => {
+  usingPreload = true;
+  submitBtn.disabled = false;
+  submitBtn.textContent = "Compress";
+});
+document.addEventListener("preloadCleared", () => {
+  usingPreload = false;
+  submitBtn.disabled = selectedFiles.length === 0;
+});
+
+dz.addEventListener("click", () => fileInput.click());
+dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("dragover"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
+dz.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dz.classList.remove("dragover");
+  addFiles([...e.dataTransfer.files]);
+});
+fileInput.addEventListener("change", () => addFiles([...fileInput.files]));
+
+function addFiles(files) {
+  files = files.filter(f => f.name.toLowerCase().endsWith(".pdf"));
+  selectedFiles = selectedFiles.concat(files);
+  renderFiles();
+}
+
+function renderFiles() {
+  fileList.innerHTML = selectedFiles.map((f, i) =>
+    `<div class="file-item"><span>${f.name}</span><span>${(f.size/1024/1024).toFixed(2)} MB <a href="#" data-i="${i}" class="remove" style="margin-left: 12px; color: var(--text-dim);">✕</a></span></div>`
+  ).join("");
+  document.querySelectorAll(".remove").forEach(el => {
+    el.onclick = (e) => {
+      e.preventDefault();
+      selectedFiles.splice(parseInt(el.dataset.i), 1);
+      renderFiles();
+    };
+  });
+  submitBtn.disabled = selectedFiles.length === 0 && !usingPreload;
+}
+
+document.querySelectorAll(".preset-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    activePreset = btn.dataset.preset;
+    customRow.style.display = activePreset === "custom" ? "block" : "none";
+  };
+});
+
+submitBtn.onclick = async () => {
+  const fd = new FormData();
+  fd.append("preset", activePreset);
+  if (activePreset === "custom") {
+    fd.append("custom_mb", document.getElementById("customMb").value);
+  }
+  selectedFiles.forEach(f => fd.append("files", f));
+
+  document.getElementById("processing").style.display = "block";
+  document.getElementById("results").innerHTML = "";
+  submitBtn.disabled = true;
+
+  try {
+    const resp = await fetch("/tool/compress", { method: "POST", body: fd });
+    const data = await resp.json();
+    renderResults(data.results || []);
+  } catch (e) {
+    document.getElementById("results").innerHTML = `<div class="result-card error"><h3>Error</h3><div>${e.message}</div></div>`;
+  } finally {
+    document.getElementById("processing").style.display = "none";
+    submitBtn.disabled = selectedFiles.length === 0 && !usingPreload;
+  }
+};
+
+function renderResults(results) {
+  document.getElementById("results").innerHTML = results.map(r => {
+    if (r.error) {
+      return `<div class="result-card error"><h3>${r.original_name}</h3><div>${r.error}</div></div>`;
+    }
+    const cls = r.hit_target ? "" : "warning";
+    return `
+      <div class="result-card ${cls}">
+        <h3>${r.original_name}</h3>
+        <div class="stats">
+          <span><strong>${r.original_mb} MB</strong> → <strong>${r.final_mb} MB</strong></span>
+          <span>Saved <strong>${r.saved_pct}%</strong></span>
+          <span>Target: ${r.target_mb} MB ${r.hit_target ? "✓" : "✗"}</span>
+          <span>${r.color_pages} color / ${r.gray_pages} mono pages</span>
+        </div>
+        <div style="color: var(--text-dim); font-size: 13px;">Setting used: ${r.setting_used}</div>
+        <div style="margin-top: 8px; font-size: 13px;">${r.message}</div>
+        <a class="download-link" href="${r.download_url}">Download</a>
+        ${r.needs_split ? '<a class="download-link" style="background: var(--warning); margin-left: 8px;" href="/tool/auto-split">Try Auto-Split →</a>' : ""}
+      </div>
+    
+      <div class="continue-tools">
+        <div class="continue-title">Continue to…</div>
+        <div class="continue-grid"><a href="/tool/bulk-rename" class="continue-card"><span class="continue-icon">📝</span><span class="continue-label">Bulk Renamer</span><span class="continue-arrow">›</span></a><a href="/tool/stamp" class="continue-card"><span class="continue-icon">🏷</span><span class="continue-label">Stamp</span><span class="continue-arrow">›</span></a><a href="/tool/auto-split" class="continue-card"><span class="continue-icon">✂️</span><span class="continue-label">Auto-Split to Fit</span><span class="continue-arrow">›</span></a><a href="/tool/organize" class="continue-card"><span class="continue-icon">🗂️</span><span class="continue-label">Organize Pages</span><span class="continue-arrow">›</span></a><a href="/tool/merge" class="continue-card"><span class="continue-icon">🔗</span><span class="continue-label">Merge PDFs</span><span class="continue-arrow">›</span></a><a href="/tool/protect" class="continue-card"><span class="continue-icon">🔒</span><span class="continue-label">Protect PDF</span><span class="continue-arrow">›</span></a></div>
+      </div>
+    `;
+  }).join("");
+}
+</script>
+{% endblock %}

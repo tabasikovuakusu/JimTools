@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Sign in — JimTools{% endblock %}
+{% block header %}{% endblock %}
+{% block content %}
+<div style="max-width: 360px; margin: 80px auto;">
+  <div class="logo" style="font-size: 28px; margin-bottom: 32px; text-align: center;">
+    GSL <span>Tools</span>
+  </div>
+  <div class="panel">
+    <h2 style="margin-bottom: 24px;">Sign in</h2>
+    <form method="POST">
+      <div class="form-row">
+        <label for="password">Office password</label>
+        <input type="password" id="password" name="password" required autofocus>
+      </div>
+      <button class="btn" style="width: 100%;" type="submit">Sign in</button>
+    </form>
+    <div class="hint" style="text-align: center; margin-top: 16px;">
+      Private PDF workstation. Files are processed locally and auto-deleted after one hour.
+    </div>
+  </div>
+</div>
+{% endblock %}

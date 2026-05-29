@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}PDF to Excel &mdash; JimTools{% endblock %}
+{% block content %}
+<a href="/" class="back-link">&larr; Back to all tools</a>
+<h1>PDF to Excel</h1>
+<p class="subtitle">Pull tables out of a PDF into an Excel spreadsheet. Each page&apos;s tables become their own sheet.</p>
+
+{% if not caps.pdf_to_excel %}
+<div class="panel" style="border-color:#e0a000;">
+  <div style="color:#e0a000;font-weight:600;margin-bottom:6px;">&#9888; This tool needs setup</div>
+  <div style="color:var(--text-dim);font-size:14px;">Needs pdfplumber and openpyxl. Run: pip install pdfplumber openpyxl</div>
+</div>
+{% endif %}
+
+<div class="panel">
+  
+  <div class="form-row">
+    <label>File</label>
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">&#128228;</div>
+      <div><strong>Click or drop a file here</strong></div>
+      <div class="dz-text">PDF file &mdash; extracts tables into an .xlsx workbook</div>
+      <input type="file" id="fileInput" accept=".pdf">
+    </div>
+    <div class="file-list" id="fileList"></div>
+  </div>
+  <button class="btn" id="submitBtn" disabled>Convert</button>
+</div>
+
+<div id="processing" style="display:none;" class="panel processing">
+  <div class="spinner"></div><div>Converting&hellip; this can take a few seconds</div>
+</div>
+<div id="results"></div>
+
+<script>
+let selectedFile = null;
+let usingPreload = false;
+const dz = document.getElementById("dropzone");
+const fi = document.getElementById("fileInput");
+const fl = document.getElementById("fileList");
+const sb = document.getElementById("submitBtn");
+
+document.addEventListener("preloadReady", (e) => {
+  usingPreload = true; sb.disabled = false;
+  fl.innerHTML = '<div class="file-item"><span style="color:#22cc55;">\u2713 ' + e.detail.original_name + '</span><span style="color:var(--text-dim);">' + e.detail.size_mb + ' MB &mdash; from previous step</span></div>';
+  selectedFile = null;
+});
+document.addEventListener("preloadCleared", () => {
+  usingPreload = false; sb.disabled = !selectedFile; fl.innerHTML = "";
+});
+
+dz.onclick = () => fi.click();
+dz.ondragover = e => { e.preventDefault(); dz.classList.add("dragover"); };
+dz.ondragleave = () => dz.classList.remove("dragover");
+dz.ondrop = e => { e.preventDefault(); dz.classList.remove("dragover"); setFile(e.dataTransfer.files[0]); };
+fi.onchange = () => setFile(fi.files[0]);
+function setFile(f) {
+  if (!f) return;
+  selectedFile = f; usingPreload = false;
+  fl.innerHTML = '<div class="file-item"><span>' + f.name + '</span><span>' + (f.size/1024/1024).toFixed(2) + ' MB</span></div>';
+  sb.disabled = false;
+}
+
+sb.onclick = async () => {
+  const fd = new FormData();
+  if (selectedFile) fd.append("file", selectedFile);
+  
+  document.getElementById("processing").style.display = "block";
+  document.getElementById("results").innerHTML = "";
+  sb.disabled = true;
+  try {
+    const r = await fetch("/tool/pdf-to-excel", { method:"POST", body:fd });
+    const d = await r.json();
+    let html;
+    if (d.error) html = '<div class="result-card error"><h3>Could not convert</h3><div>' + d.error + '</div></div>';
+    else {
+      html = '<div class="result-card"><h3>Done &mdash; ' + d.size_mb + ' MB &middot; ' + d.tables_found + ' table' + (d.tables_found!==1?'s':'') + ' from ' + d.pages_with_tables + '/' + d.total_pages + ' pages</h3><a class="download-link" href="' + d.download_url + '">Download</a></div>'
+        + '<div class="continue-tools"><div class="continue-title">Continue to&hellip;</div>'
+        + (d.pass_key ? '<div style="font-size:12px;color:#22cc55;margin-bottom:8px;padding:6px 8px;background:#111a14;border-radius:6px;border:1px solid #22cc55;">\u2713 Your converted file will be pre-loaded in the next tool</div>' : '')
+        + '<div class="continue-grid"><a href="/tool/compress" class="continue-card"><span class="continue-icon">&#128201;</span><span class="continue-label">Smart Compress</span><span class="continue-arrow">&#8250;</span></a><a href="/tool/organize" class="continue-card"><span class="continue-icon">&#128450;</span><span class="continue-label">Organize Pages</span><span class="continue-arrow">&#8250;</span></a><a href="/tool/protect" class="continue-card"><span class="continue-icon">&#128274;</span><span class="continue-label">Protect PDF</span><span class="continue-arrow">&#8250;</span></a></div></div>';
+    }
+    document.getElementById("results").innerHTML = html;
+    if (d.pass_key) document.querySelectorAll("#results .continue-card").forEach(a => {
+      a.href = a.getAttribute("href") + "?from=" + d.pass_key;
+    });
+  } catch (e) {
+    document.getElementById("results").innerHTML = '<div class="result-card error">' + e.message + '</div>';
+  } finally {
+    document.getElementById("processing").style.display = "none";
+    sb.disabled = false;
+  }
+};
+</script>
+{% endblock %}

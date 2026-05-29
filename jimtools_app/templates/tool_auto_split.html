@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Auto-Split — JimTools{% endblock %}
+{% block content %}
+<a href="/" class="back-link">← Back to all tools</a>
+<h1>Auto-Split to Fit</h1>
+<p class="subtitle">When a file genuinely can't compress small enough, break it into parts that each fit. The honest fallback.</p>
+
+<div class="panel">
+  <div class="form-row">
+    <label>Target size per part (MB)</label>
+    <input type="number" id="targetMb" step="0.1" min="0.5" value="5">
+    <div class="hint">Canada portals: 5 MB. NZ: 10 MB. Set whatever your portal needs.</div>
+  </div>
+  <div class="form-row">
+    <label>PDF to split</label>
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">📤</div>
+      <div><strong>Click or drop a PDF</strong></div>
+      <input type="file" id="fileInput" accept=".pdf">
+    </div>
+    <div class="file-list" id="fileList"></div>
+  </div>
+  <button class="btn" id="submitBtn" disabled>Split into parts</button>
+</div>
+
+<div id="processing" style="display: none;" class="panel processing">
+  <div class="spinner"></div><div>Splitting…</div>
+</div>
+<div id="results"></div>
+
+<script>
+let selectedFile = null;
+const dz = document.getElementById("dropzone");
+const fi = document.getElementById("fileInput");
+const fl = document.getElementById("fileList");
+const sb = document.getElementById("submitBtn");
+dz.onclick = () => fi.click();
+dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("dragover"); };
+dz.ondragleave = () => dz.classList.remove("dragover");
+dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove("dragover"); pick(e.dataTransfer.files[0]); };
+fi.onchange = () => pick(fi.files[0]);
+function pick(f) {
+  if (!f) return;
+  selectedFile = f;
+  fl.innerHTML = `<div class="file-item"><span>${f.name}</span><span>${(f.size/1024/1024).toFixed(2)} MB</span></div>`;
+  sb.disabled = false;
+}
+sb.onclick = async () => {
+  const fd = new FormData();
+  fd.append("file", selectedFile);
+  fd.append("target_mb", document.getElementById("targetMb").value);
+  document.getElementById("processing").style.display = "block";
+  document.getElementById("results").innerHTML = "";
+  sb.disabled = true;
+  try {
+    const r = await fetch("/tool/auto-split", { method: "POST", body: fd });
+    const d = await r.json();
+    if (d.error) {
+      document.getElementById("results").innerHTML = `<div class="result-card error">${d.error}</div>`;
+    } else {
+      document.getElementById("results").innerHTML = `
+        <div class="result-card">
+          <h3>Split into ${d.total_parts} parts</h3>
+          ${d.parts.map(p => `<div class="stats"><span><strong>${p.name}</strong> — ${p.size_mb} MB <a class="download-link" style="margin-left: 12px;" href="${p.download_url}">Download</a></span></div>`).join("")}
+        </div>`;
+    }
+  } finally {
+    document.getElementById("processing").style.display = "none";
+    sb.disabled = false;
+  }
+};
+</script>
+{% endblock %}
